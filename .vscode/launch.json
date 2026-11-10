@@ -4,7 +4,11 @@
     {
       "type": "gdbtarget",
       "request": "attach",
-      "name": "Eclipse CDT GDB Adapter"
+      "name": "ESP32-S3: USB JTAG (attach)",
+      "cwd": "${workspaceFolder}",
+      "program": "${workspaceFolder}/build/E-InkHomeArt.elf",
+      "gdb": "${command:espIdf.getToolchainGdb}",
+      "runOpenOCD": true
     }
   ]
 }

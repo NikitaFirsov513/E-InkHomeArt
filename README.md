@@ -36,3 +36,34 @@
 | Отладочный UART0  | TX / `DBG_TX`   |   43 | J2.2, выход ESP32                                                                                                                    |
 | Кнопка BOOT           | `BOOT`          |    0 | S2 замыкает на GND                                                                                                              |
 | Светодиод D6       | LED             |    6 | Через R28; включение уровнем 1                                                                                       |
+
+## Конфигурация и сборка
+
+Проект настроен на **ESP-IDF 6.1** и **ESP32-S3 N16R8**. Настройки платы
+хранятся в `sdkconfig.defaults`: Flash 16 МБ, QIO 80 МГц; Octal PSRAM 8 МБ,
+80 МГц, инициализация и проверка памяти при запуске, доступ через `malloc()`.
+Основная консоль — встроенный USB Serial/JTAG на GPIO19/20.
+[Режимы Flash/PSRAM в документации Espressif](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-guides/flash_psram_config.html).
+
+В терминале с активированным ESP-IDF 6.1:
+
+```sh
+idf.py build
+idf.py -p PORT flash monitor
+```
+
+`PORT` — порт платы. Если проект ранее собирался для другого чипа, сначала
+выполните `idf.py set-target esp32s3`: команда пересоздаёт локальный `sdkconfig`.
+Файл `sdkconfig` и каталог `build/` генерируются и не входят в Git.
+Изменение `sdkconfig.defaults` не заменяет уже сохранённые значения `sdkconfig`.
+
+Для отладки используется `board/esp32s3-builtin.cfg` и встроенный USB-JTAG;
+на Windows для него может потребоваться драйвер WinUSB. В `.vscode/settings.json`
+сохранены пути к локальным ESP-IDF и clangd: на другом компьютере выберите свою
+установку ESP-IDF и поправьте `clangd.path` / `--resource-dir`.
+База команд для анализа кода создаётся первой сборкой в `build/compile_commands.json`.
+Контейнер разработки использует образ `espressif/idf:v6.1`.
+
+Разметка Flash пока стандартная: NVS, PHY и один раздел приложения 1 МБ,
+без OTA и файловой системы. Оставшееся место распределим при реализации панели.
+Стартовый Hello World пока перезапускает устройство примерно каждые 11 секунд.

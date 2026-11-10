@@ -1,5 +1,5 @@
 {
-	"name": "ESP-IDF QEMU",
+	"name": "E-InkHomeArt (ESP-IDF 6.1)",
 	"build": {
 		"dockerfile": "Dockerfile"
 	},

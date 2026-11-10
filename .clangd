@@ -1,2 +1,10 @@
 CompileFlags:
-    Remove: [-f*, -m*]
+    CompilationDatabase: build
+    # GCC flags unsupported by Espressif clangd; keep the remaining build flags.
+    Remove:
+        - -mdisable-hardware-atomics
+        - -fno-shrink-wrap
+        - -fstrict-volatile-bitfields
+        - -fno-tree-switch-conversion
+        - -fzero-init-padding-bits=*
+        - -fno-malloc-dce
