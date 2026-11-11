@@ -13,11 +13,12 @@ _Static_assert((BOARD_GPIO_USED_MASK & BOARD_GPIO_UNUSED_MASK) == 0,
                "Used and unconnected GPIOs overlap");
 _Static_assert(__builtin_popcountll(BOARD_GPIO_OUTPUT_MASK) == BOARD_GPIO_OUTPUT_COUNT,
                "Output count does not match the GPIO mask");
-_Static_assert(BOARD_PIN_BATTERY_ADC == ADC1_CHANNEL_0_GPIO_NUM,
+_Static_assert(BOARD_ADC_UNIT == ADC_UNIT_1 && BOARD_ADC_BATTERY_CHANNEL == ADC_CHANNEL_0 &&
+               BOARD_PIN_BATTERY_ADC == ADC1_CHANNEL_0_GPIO_NUM,
                "Battery GPIO must match ADC1 channel 0");
-_Static_assert(BOARD_PIN_USB_CC1_ADC == ADC1_CHANNEL_7_GPIO_NUM,
+_Static_assert(BOARD_ADC_USB_CC1_CHANNEL == ADC_CHANNEL_7 && BOARD_PIN_USB_CC1_ADC == ADC1_CHANNEL_7_GPIO_NUM,
                "CC1 GPIO must match ADC1 channel 7");
-_Static_assert(BOARD_PIN_USB_CC2_ADC == ADC1_CHANNEL_2_GPIO_NUM,
+_Static_assert(BOARD_ADC_USB_CC2_CHANNEL == ADC_CHANNEL_2 && BOARD_PIN_USB_CC2_ADC == ADC1_CHANNEL_2_GPIO_NUM,
                "CC2 GPIO must match ADC1 channel 2");
 
 const board_gpio_output_level_t board_gpio_output_levels[BOARD_GPIO_OUTPUT_COUNT] = {

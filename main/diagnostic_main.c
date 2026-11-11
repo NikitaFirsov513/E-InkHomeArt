@@ -34,7 +34,7 @@ static int adc_mv[BOARD_ADC_INPUT_COUNT] = {-1,-1,-1};
 static esp_err_t gpio_error, i2c_error, touch_error = ESP_ERR_NOT_FOUND;
 static esp_err_t accel_error = ESP_ERR_NOT_FOUND, adc_error, uart_error, flash_error;
 static uint32_t flash_bytes;
-static bool psram_pass, have_accel_sample;
+static bool psram_pass, have_accel_sample, accel_ready;
 static bool usb_input_ready;
 static size_t psram_bytes;
 static uint16_t touch_width, touch_height;
@@ -167,7 +167,24 @@ static void setup_i2c_devices(void)
         if (accel_error == ESP_OK) accel_error = lis2dw12_pin_mode_set(st,LIS2DW12_PUSH_PULL);
         if (accel_error == ESP_OK) accel_error = lis2dw12_pin_int1_route_set(st,&route);
     }
+    accel_ready = accel_error == ESP_OK;
     report("LIS2DW12 / 0x19 / INT1",accel_error);
+}
+
+static void sample_accel(void)
+{
+    if (!accel_ready) return;
+    lis2dw12_sample_t candidate;
+    esp_err_t err = lis2dw12_idf_read(accel,&candidate);
+    if (err == ESP_ERR_NOT_FINISHED) return;
+    if (err == ESP_OK) {
+        acceleration = candidate;
+        have_accel_sample = true;
+    } else {
+        have_accel_sample = false;
+    }
+    if (err != accel_error) report("ACCEL read",err);
+    accel_error = err;
 }
 
 static void voltage_text(char *out, size_t length, int mv)
@@ -273,6 +290,8 @@ static void clear_touch(void)
 {
     screen.touch_samples = screen.target_mask = 0;
     screen.touch_x = screen.touch_y = -1;
+    raw_touch_x = raw_touch_y = 0;
+    touch_points = 0;
 }
 
 static void command(char c)
@@ -347,9 +366,9 @@ void app_main(void)
     if (gpio_error == ESP_OK) setup_i2c_devices();
     else i2c_error = gpio_error;
     sample_adc();
-    if (accel && accel_error == ESP_OK) {
+    if (accel_ready) {
         vTaskDelay(pdMS_TO_TICKS(80)+2);
-        have_accel_sample = lis2dw12_idf_read(accel,&acceleration) == ESP_OK;
+        sample_accel();
     }
     screen_queue = xQueueCreate(1,sizeof(screen));
     if (!screen_queue || xTaskCreate(display_task,"diag_epd",6144,NULL,4,NULL) != pdPASS) {
@@ -396,19 +415,15 @@ void app_main(void)
         if (now - sample_time >= 1000000) {
             sample_time = now;
             sample_adc();
-            if (accel && accel_error == ESP_OK) {
-                lis2dw12_sample_t candidate;
-                esp_err_t err = lis2dw12_idf_read(accel,&candidate);
-                if (err == ESP_OK) { acceleration = candidate; have_accel_sample = true; }
-                else if (err != ESP_ERR_NOT_FINISHED) { accel_error = err; have_accel_sample = false; report("ACCEL read",err); }
-            }
+            sample_accel();
         }
         if (now - log_time >= 5000000) {
             log_time = now;
-            char live[256];
-            snprintf(live,sizeof(live),"LIVE uptime=%"PRId64"s adc_raw=%d,%d,%d mv=%d,%d,%d accel=%d,%d,%dmg INT1=%"PRIu32" touch=%s UART_RX=%"PRIu32"\r\n",
+            char live[320];
+            snprintf(live,sizeof(live),"LIVE uptime=%"PRId64"s adc_raw=%d,%d,%d mv=%d,%d,%d accel=%d,%d,%dmg accel_status=%s valid=%u INT1=%"PRIu32" touch=%s UART_RX=%"PRIu32"\r\n",
                 now/1000000,adc_raw[0],adc_raw[1],adc_raw[2],adc_mv[0],adc_mv[1],adc_mv[2],
-                (int)acceleration.mg[0],(int)acceleration.mg[1],(int)acceleration.mg[2],lis_int_edges,esp_err_to_name(touch_error),uart_rx_count);
+                (int)acceleration.mg[0],(int)acceleration.mg[1],(int)acceleration.mg[2],
+                esp_err_to_name(accel_error),(unsigned)have_accel_sample,lis_int_edges,esp_err_to_name(touch_error),uart_rx_count);
             ESP_LOGI(TAG,"%s",live);
             if (uart_error == ESP_OK) uart_write_bytes(BOARD_DEBUG_UART_PORT,live,strlen(live));
         }

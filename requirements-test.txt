@@ -1,0 +1,4 @@
+# Optional hardware smoke test; verified with --collect-only on 2026-11-11.
+pytest==9.2.0
+pytest-embedded-idf==2.9.3
+pytest-embedded-serial-esp==2.9.3

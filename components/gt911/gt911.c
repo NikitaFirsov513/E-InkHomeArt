@@ -73,6 +73,8 @@ esp_err_t gt911_new(const gt911_config_t *config, gt911_handle_t *out)
     if (!out) return ESP_ERR_INVALID_ARG;
     *out = NULL;
     if (!config || !config->bus || (!config->width != !config->height) ||
+        (config->width && (config->width < 2 || config->width > 4096 ||
+                           config->height < 2 || config->height > 4096)) ||
         !config->clock_speed_hz || config->timeout_ms < 0 || !GPIO_IS_VALID_OUTPUT_GPIO(config->reset_pin) ||
         !GPIO_IS_VALID_OUTPUT_GPIO(config->interrupt_pin) ||
         config->reset_pin == config->interrupt_pin ||
@@ -162,7 +164,12 @@ esp_err_t gt911_read(gt911_handle_t dev,
     if (!dev || !points) return ESP_ERR_INVALID_ARG;
     if (dev->sleeping) return ESP_ERR_INVALID_STATE;
     memset(points, 0, GT911_MAX_POINTS * sizeof(*points));
-    esp_err_t err = esp_lcd_touch_read_data(dev->touch);
+    /* Upstream retains its cached points when no new frame is ready. Check
+     * the latched ready flag before reading, so polling never replays them. */
+    uint8_t status = 0;
+    esp_err_t err = esp_lcd_panel_io_rx_param(dev->io, 0x814E, &status, sizeof(status));
+    if (err != ESP_OK || !(status & 0x80)) return err;
+    err = esp_lcd_touch_read_data(dev->touch);
     if (err != ESP_OK) return err;
     err = esp_lcd_touch_get_data(dev->touch, points, count, GT911_MAX_POINTS);
     if (err != ESP_OK) { *count = 0; return err; }

@@ -16,7 +16,7 @@ typedef struct {
     i2c_master_bus_handle_t bus; /* Borrowed; caller creates and deletes the bus. */
     gpio_num_t reset_pin;
     gpio_num_t interrupt_pin;
-    uint16_t width;  /* Set both dimensions to 0 to read the native GT911 config. */
+    uint16_t width;  /* 2..4096; set both dimensions to 0 to read native config. */
     uint16_t height;
     uint8_t address; /* GT911_ADDRESS_LOW or GT911_ADDRESS_HIGH. */
     uint32_t clock_speed_hz;
@@ -30,7 +30,8 @@ typedef struct {
 esp_err_t gt911_new(const gt911_config_t *config, gt911_handle_t *out);
 esp_err_t gt911_delete(gt911_handle_t device);
 esp_err_t gt911_get_native_resolution(gt911_handle_t device, uint16_t *width, uint16_t *height);
-/* Task context only. Serialize operations on each device, including deletion. */
+/* Fresh frames only: count=0 when no new frame is ready or all fingers lift.
+ * Task context only. Serialize operations on each device, including deletion. */
 esp_err_t gt911_read(gt911_handle_t device,
                     esp_lcd_touch_point_data_t points[GT911_MAX_POINTS], uint8_t *count);
 esp_err_t gt911_sleep(gt911_handle_t device);

@@ -61,6 +61,7 @@ dist/
 # Virtual environment folders
 venv/
 .venv/
+.venv-test/
 env/
 
 # Language Servers
