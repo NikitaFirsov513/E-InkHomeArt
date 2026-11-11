@@ -17,3 +17,6 @@ CONFIG_SPIRAM_MEMTEST=y
 # Native USB on GPIO19/20 is the primary console.
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# Diagnostic startup/calibration and formatted telemetry.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192

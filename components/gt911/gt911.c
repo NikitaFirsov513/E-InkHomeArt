@@ -17,6 +17,8 @@ struct gt911_device {
     gpio_num_t interrupt_pin;
     uint16_t width;
     uint16_t height;
+    uint16_t native_width;
+    uint16_t native_height;
     bool sleeping;
     bool pins_owned;
 };
@@ -70,8 +72,8 @@ esp_err_t gt911_new(const gt911_config_t *config, gt911_handle_t *out)
 {
     if (!out) return ESP_ERR_INVALID_ARG;
     *out = NULL;
-    if (!config || !config->bus || !config->width || !config->height ||
-        !config->clock_speed_hz || !GPIO_IS_VALID_OUTPUT_GPIO(config->reset_pin) ||
+    if (!config || !config->bus || (!config->width != !config->height) ||
+        !config->clock_speed_hz || config->timeout_ms < 0 || !GPIO_IS_VALID_OUTPUT_GPIO(config->reset_pin) ||
         !GPIO_IS_VALID_OUTPUT_GPIO(config->interrupt_pin) ||
         config->reset_pin == config->interrupt_pin ||
         (config->address != GT911_ADDRESS_LOW && config->address != GT911_ADDRESS_HIGH)) {
@@ -81,20 +83,36 @@ esp_err_t gt911_new(const gt911_config_t *config, gt911_handle_t *out)
     if (!dev) return ESP_ERR_NO_MEM;
     dev->reset_pin = config->reset_pin;
     dev->interrupt_pin = config->interrupt_pin;
-    dev->width = config->swap_xy ? config->height : config->width;
-    dev->height = config->swap_xy ? config->width : config->height;
     esp_lcd_panel_io_i2c_config_t io = ESP_LCD_TOUCH_IO_I2C_GT911_CONFIG();
     io.dev_addr = config->address;
     io.scl_speed_hz = config->clock_speed_hz;
+    io.transaction_timeout_ms = config->timeout_ms ? config->timeout_ms : 100;
     esp_err_t err = esp_lcd_new_panel_io_i2c(config->bus, &io, &dev->io);
     if (err != ESP_OK) goto fail;
     dev->pins_owned = true;
     err = reset_address(dev, config->address);
     if (err != ESP_OK) goto fail;
+    uint16_t width = config->width;
+    uint16_t height = config->height;
+    if (!width && !height) {
+        uint8_t dimensions[4];
+        err = esp_lcd_panel_io_rx_param(dev->io, 0x8048, dimensions, sizeof(dimensions));
+        if (err != ESP_OK) goto fail;
+        width = dimensions[0] | ((uint16_t)dimensions[1] << 8);
+        height = dimensions[2] | ((uint16_t)dimensions[3] << 8);
+        if (width < 2 || height < 2 || width > 4096 || height > 4096) {
+            err = ESP_ERR_INVALID_RESPONSE;
+            goto fail;
+        }
+    }
+    dev->native_width = width;
+    dev->native_height = height;
+    dev->width = config->swap_xy ? height : width;
+    dev->height = config->swap_xy ? width : height;
     const esp_lcd_touch_config_t touch = {
         /* Upstream mirrors as x_max - x, not x_max - 1 - x. */
-        .x_max = config->width - 1,
-        .y_max = config->height - 1,
+        .x_max = width - 1,
+        .y_max = height - 1,
         .rst_gpio_num = GPIO_NUM_NC, /* Reset/address already handled above. */
         .int_gpio_num = config->interrupt_pin,
         .levels = { .reset = 0, .interrupt = 0 },
@@ -196,4 +214,12 @@ esp_err_t gt911_wake(gt911_handle_t dev)
 esp_lcd_touch_handle_t gt911_touch_handle(gt911_handle_t dev)
 {
     return dev ? dev->touch : NULL;
+}
+
+esp_err_t gt911_get_native_resolution(gt911_handle_t dev, uint16_t *width, uint16_t *height)
+{
+    if (!dev || !width || !height) return ESP_ERR_INVALID_ARG;
+    *width = dev->native_width;
+    *height = dev->native_height;
+    return ESP_OK;
 }

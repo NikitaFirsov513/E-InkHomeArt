@@ -1,0 +1,9 @@
+menu "E-InkHomeArt diagnostics"
+    config DIAG_MIN_REFRESH_SECONDS
+        int "Minimum interval between manually requested screen updates (seconds)"
+        range 5 3600
+        default 10
+        help
+            Short bench-test interval; the screen never refreshes automatically.
+            For prolonged operation use the panel manufacturer's recommended interval.
+endmenu
