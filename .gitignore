@@ -33,6 +33,9 @@ build/
 flasher_args.json
 sdkconfig.old
 sdkconfig
+sdkconfig.led-test
+sdkconfig.diagnostics
+sdkconfig.display-touch
 
 # ESP-IDF dependencies
 # For older versions or manual component management

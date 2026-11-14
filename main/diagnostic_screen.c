@@ -85,12 +85,14 @@ static void header(uint8_t *f, const char *subtitle)
     text(f,550,39,"BOARD TEST / V1",20,1,false);
 }
 
-static void footer(uint8_t *f)
+static void footer(uint8_t *f, bool display_touch)
 {
     rect(f,0,430,800,50,false);
     rect(f,20,430,760,2,true);
-    text(f,22,440,"POWER: NEXT | BOOT: SNAPSHOT | HOLD BOOT: INVERT",64,2,true);
-    text(f,22,463,"USB: ? HELP  R REFRESH  N NEXT  I INVERT  T TOUCH MAP  C CLEAR",78,1,true);
+    text(f,22,440,display_touch ? "BOOT: SNAPSHOT | HOLD BOOT: INVERT | UART: N NEXT" :
+         "POWER: NEXT | BOOT: SNAPSHOT | HOLD BOOT: INVERT",64,2,true);
+    text(f,22,463,display_touch ? "UART + ENTER: R REFRESH  N NEXT  I INVERT  T TOUCH MAP  C CLEAR  ? HELP" :
+         "USB: ? HELP  R REFRESH  N NEXT  I INVERT  T TOUCH MAP  C CLEAR",78,1,true);
 }
 
 uint32_t diagnostic_target_hit(int x, int y)
@@ -120,12 +122,12 @@ bool diagnostic_map_touch(uint16_t raw_x, uint16_t raw_y, uint16_t w,
     return true;
 }
 
-bool diagnostic_screen_render(uint8_t *f, size_t length, const diagnostic_screen_t *s)
+static bool render(uint8_t *f, size_t length, const diagnostic_screen_t *s, bool display_touch)
 {
     if (!f || !s || length != DIAG_FRAME_BYTES || s->page >= DIAG_PAGE_COUNT) return false;
     for (size_t i = 0; i < length; ++i) f[i] = s->page == DIAG_BLACK ? 0xFF : 0;
     if (s->page == DIAG_STATUS) {
-        header(f,"DIAGNOSTICS");
+        header(f,display_touch ? "DISPLAY TEST" : "DIAGNOSTICS");
         text(f,22,82,"HARDWARE / STARTUP",32,2,true);
         for (unsigned i = 0; i < DIAG_LINE_COUNT; ++i)
             text(f,22,112+(int)i*27,s->lines[i],DIAG_LINE_LENGTH,2,true);
@@ -144,8 +146,9 @@ bool diagnostic_screen_render(uint8_t *f, size_t length, const diagnostic_screen
         rect(f,20,342,760,1,true);
         text(f,22,355,s->details[0],64,2,true);
         text(f,22,382,s->details[1],64,2,true);
-        text(f,22,409,"VALUES ARE A SNAPSHOT; LIVE DATA IN USB CONSOLE",64,1,true);
-        footer(f);
+        text(f,22,409,display_touch ? "VALUES ARE A SNAPSHOT; LIVE TOUCH DATA IN UART0" :
+             "VALUES ARE A SNAPSHOT; LIVE DATA IN USB CONSOLE",64,1,true);
+        footer(f,display_touch);
     } else if (s->page == DIAG_GRID) {
         for (int x = 0; x < DIAG_WIDTH; x += 25) rect(f,x,65,1,365,true);
         for (int y = 80; y < 430; y += 25) rect(f,0,y,800,1,true);
@@ -162,7 +165,7 @@ bool diagnostic_screen_render(uint8_t *f, size_t length, const diagnostic_screen
         rect(f,145,341,510,65,false);
         text(f,157,351,s->details[0],40,2,true);
         text(f,157,378,s->details[1],40,2,true);
-        footer(f);
+        footer(f,display_touch);
     } else if (s->page == DIAG_CHECKER) {
         for (int y = 0; y < DIAG_HEIGHT; ++y)
             for (int x = 0; x < DIAG_WIDTH; ++x) pixel(f,x,y,((x/16)+(y/16))%2 == 0);
@@ -171,4 +174,14 @@ bool diagnostic_screen_render(uint8_t *f, size_t length, const diagnostic_screen
     }
     if (s->inverted) for (size_t i = 0; i < length; ++i) f[i] ^= 0xFF;
     return true;
+}
+
+bool diagnostic_screen_render(uint8_t *f, size_t length, const diagnostic_screen_t *s)
+{
+    return render(f,length,s,false);
+}
+
+bool display_touch_screen_render(uint8_t *f, size_t length, const diagnostic_screen_t *s)
+{
+    return render(f,length,s,true);
 }

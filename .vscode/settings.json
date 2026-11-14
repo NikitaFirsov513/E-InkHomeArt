@@ -3,7 +3,7 @@
     "idf.openOcdConfigs": [
       "board/esp32s3-builtin.cfg"
     ],
-    "idf.port": "detect",
+    "idf.port": "COM7",
     "idf.customExtraVars": {
       "IDF_TARGET": "esp32s3",
       "PYTHONUTF8": "1"
@@ -13,5 +13,6 @@
       "--background-index",
       "--query-driver=**/xtensa-*-elf-gcc*,**/xtensa-*-elf-g++*",
       "--resource-dir=D:/Espressif/tools/esp-clang-libs/esp-21.1.3_20260408/esp-clang/lib/clang/21"
-    ]
+    ],
+    "idf.flashType": "UART"
 }

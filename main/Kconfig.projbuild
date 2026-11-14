@@ -1,4 +1,23 @@
-menu "E-InkHomeArt diagnostics"
+menu "E-InkHomeArt"
+    config APP_DISPLAY_TOUCH_TEST
+        bool "Display and touch assembly test"
+        default n
+        help
+            UC8179 screen, GT911 touch, UART0 and a timer-driven D6 heartbeat.
+            No ADC, accelerometer, charger control, radio or PSRAM test.
+            Use sdkconfig.defaults.display-touch for this assembly stage.
+
+    config APP_LED_TEST
+        bool "LED-only first assembly test"
+        default y
+        depends on !APP_DISPLAY_TOUCH_TEST
+        help
+            Blink D6 on GPIO6 using a periodic timer (500 ms on / 500 ms off).
+            No panel, touch,
+            accelerometer, ADC, charger control or external PSRAM is started.
+            Use sdkconfig.defaults.diagnostics for full board diagnostics.
+
+    if !APP_LED_TEST
     config DIAG_MIN_REFRESH_SECONDS
         int "Minimum interval between manually requested screen updates (seconds)"
         range 5 3600
@@ -6,4 +25,5 @@ menu "E-InkHomeArt diagnostics"
         help
             Short bench-test interval; the screen never refreshes automatically.
             For prolonged operation use the panel manufacturer's recommended interval.
+    endif
 endmenu

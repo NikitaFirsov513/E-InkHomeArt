@@ -59,7 +59,8 @@ def main():
         objects.append(str(obj))
     library = build / ('driver_regression.dll' if os.name == 'nt' else 'driver_regression.so')
     exports = ['host_case_count', 'host_case_name', 'host_case_run', 'host_failure',
-               'diagnostic_screen_render', 'diagnostic_map_touch', 'diagnostic_target_hit']
+               'diagnostic_screen_render', 'display_touch_screen_render',
+               'diagnostic_map_touch', 'diagnostic_target_hit']
     if os.name == 'nt':
         linker = args.linker or compiler.with_name('lld-link.exe')
         cmd = [str(linker)]
@@ -89,6 +90,9 @@ def main():
         raise SystemExit(1)
     subprocess.run([sys.executable, str(ROOT / 'tools/preview_diagnostics.py'),
                     '--library', str(library), '--output', str(build / 'previews')], check=True)
+    subprocess.run([sys.executable, str(ROOT / 'tools/preview_diagnostics.py'),
+                    '--library', str(library), '--display-touch',
+                    '--output', str(build / 'previews')], check=True)
     print(f'Passed {len(results)} driver scenarios. Results: {build / "results.json"}')
 
 

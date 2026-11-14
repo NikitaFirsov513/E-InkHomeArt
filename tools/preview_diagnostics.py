@@ -42,11 +42,13 @@ def png(path: Path, frame: bytes) -> None:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--library', type=Path, required=True)
+    parser.add_argument('--display-touch', action='store_true', help='Preview the UART/BOOT assembly-test layout.')
     parser.add_argument('--output', type=Path, default=Path('docs'))
     args = parser.parse_args()
     lib = ct.CDLL(str(args.library.resolve()))
-    lib.diagnostic_screen_render.argtypes = [ct.POINTER(ct.c_uint8), ct.c_size_t, ct.POINTER(Screen)]
-    lib.diagnostic_screen_render.restype = ct.c_bool
+    render_frame = lib.display_touch_screen_render if args.display_touch else lib.diagnostic_screen_render
+    render_frame.argtypes = [ct.POINTER(ct.c_uint8), ct.c_size_t, ct.POINTER(Screen)]
+    render_frame.restype = ct.c_bool
     lib.diagnostic_map_touch.argtypes = [ct.c_uint16] * 4 + [ct.c_uint, ct.POINTER(ct.c_int), ct.POINTER(ct.c_int)]
     lib.diagnostic_map_touch.restype = ct.c_bool
     lib.diagnostic_target_hit.argtypes = [ct.c_int, ct.c_int]
@@ -56,22 +58,32 @@ def main():
         # Canary bytes check both ends of the framebuffer on every rendering.
         guarded = (ct.c_uint8 * (FRAME_BYTES + 32))(*([0xA5] * (FRAME_BYTES + 32)))
         pixels = ct.cast(ct.byref(guarded, 16), ct.POINTER(ct.c_uint8))
-        assert lib.diagnostic_screen_render(pixels, FRAME_BYTES, ct.byref(screen))
+        assert render_frame(pixels, FRAME_BYTES, ct.byref(screen))
         assert bytes(guarded[:16]) == b'\xa5' * 16
         assert bytes(guarded[-16:]) == b'\xa5' * 16
         return bytes(guarded[16:-16])
 
     status = Screen(touch_x=-1, touch_y=-1)
-    for row, value in zip(status.lines, [
+    rows = [
         b'FLASH OK 16 MB', b'PSRAM OK 8 MB', b'I2C0 READY / 100 KHZ',
         b'TOUCH OK 480X800', b'ACCEL OK / 2G / 25 HZ', b'ADC1 READY / CAL 3/3',
         b'USB HOST CONNECTED', b'UART0 READY / 115200',
-    ]):
+    ]
+    if args.display_touch:
+        rows = [b'PANEL 800X480 / UC8179', b'SPI2 1MHZ MOSI45 CLK48 CS47',
+                b'I2C SDA10 SCL11 / READY', b'TOUCH OK 480X800',
+                b'D6 HEARTBEAT / GPIO6', b'UART0 115200 / TX43 RX44',
+                b'REFRESH MANUAL / MIN 180S', b'EPD TX ESP_OK']
+    for row, value in zip(status.lines, rows):
         row.value = value
     status.details[0].value = b'BAT=4.120V  CC1=0.410V  CC2=0.008V'
     status.details[1].value = b'AX=12 AY=-8 AZ=1002 MG  TOUCH=18'
+    if args.display_touch:
+        status.details[0].value = b'X=400 Y=250 PTS=1 HIT=5/5'
+        status.details[1].value = b'RAW=250,400 MAP=0 FRAMES=18'
+    prefix = 'display-touch' if args.display_touch else 'diagnostics'
     normal = render(status)
-    png(args.output / 'diagnostics-preview.png', normal)
+    png(args.output / f'{prefix}-preview.png', normal)
     status.inverted = 1
     inverse = render(status)
     assert inverse == bytes(value ^ 255 for value in normal)
@@ -79,7 +91,7 @@ def main():
     grid = Screen(page=1, touch_samples=18, target_mask=31, touch_x=400, touch_y=250)
     grid.details[0].value = b'X=400 Y=250 PTS=1 HIT=5/5'
     grid.details[1].value = b'RAW=250,400 MAP=0 FRAMES=18'
-    png(args.output / 'diagnostics-touch-preview.png', render(grid))
+    png(args.output / f'{prefix}-touch-preview.png', render(grid))
     assert render(Screen(page=2)) == b'\x00' * FRAME_BYTES
     assert render(Screen(page=3)) == b'\xff' * FRAME_BYTES
     assert render(Screen(page=2, inverted=1)) == b'\xff' * FRAME_BYTES
@@ -87,9 +99,9 @@ def main():
     # A bogus cursor must never index outside the frame.
     render(Screen(page=1, touch_samples=1, touch_x=2**31 - 1, touch_y=2**31 - 1))
     invalid = (ct.c_uint8 * FRAME_BYTES)(*([0xA5] * FRAME_BYTES))
-    assert not lib.diagnostic_screen_render(invalid, FRAME_BYTES - 1, ct.byref(status))
+    assert not render_frame(invalid, FRAME_BYTES - 1, ct.byref(status))
     assert bytes(invalid) == b'\xa5' * FRAME_BYTES
-    assert not lib.diagnostic_screen_render(invalid, FRAME_BYTES, ct.byref(Screen(page=5)))
+    assert not render_frame(invalid, FRAME_BYTES, ct.byref(Screen(page=5)))
 
     for width, height in [(480, 800), (800, 480)]:
         for orientation in range(8):

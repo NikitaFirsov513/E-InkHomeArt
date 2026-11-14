@@ -1,6 +1,10 @@
 # Первый запуск собранной платы
 
 Это диагностическая прошивка для ESP32-S3 N16R8 и панели GDEY075T7-T01.
+По умолчанию проект собирает [минимальный LED-тест](LED_TEST.md).
+Для частично собранной платы с дисплеем и тачем используется
+[отдельный UART-режим без остальных датчиков](DISPLAY_TOUCH_TEST.md).
+Для полной диагностики ниже используется отдельная конфигурация и каталог сборки.
 Она запускает GPIO, SPI, общую I²C, драйверы панели/touch/акселерометра и ADC.
 Тест аппаратно ещё не выполнялся. Превью ниже получены тем же C-рендерером
 на компьютере; числа и успешные статусы в них — примеры.
@@ -12,8 +16,8 @@
 В терминале с активированным ESP-IDF 6.1, из корня проекта:
 
 ```sh
-idf.py build
-idf.py -p PORT flash monitor
+idf.py -B build/diagnostics -D SDKCONFIG=sdkconfig.diagnostics -D "SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.diagnostics" build
+idf.py -B build/diagnostics -D SDKCONFIG=sdkconfig.diagnostics -p PORT flash monitor
 ```
 
 `PORT` — реальный COM-порт платы, например `COM7`. Если требуется вручную
@@ -24,17 +28,17 @@ BOOT здесь — GPIO0, RESET — EN. Выход из монитора ESP-ID
 разделов и приложение, из того же окружения:
 
 ```sh
-python -m esptool --chip esp32s3 -p PORT write-flash 0x0 build/E-InkHomeArt-diagnostics.bin
+python -m esptool --chip esp32s3 -p PORT write-flash 0x0 build/diagnostics/E-InkHomeArt-diagnostics.bin
 ```
 
 После изменения исходников этот файл нужно пересоздать:
 
 ```sh
-idf.py build merge-bin -o E-InkHomeArt-diagnostics.bin
+idf.py -B build/diagnostics -D SDKCONFIG=sdkconfig.diagnostics build merge-bin -o E-InkHomeArt-diagnostics.bin
 ```
 
 Имя после `merge-bin -o` задаётся относительно каталога сборки; результат
-этой команды находится в `build/E-InkHomeArt-diagnostics.bin`.
+этой команды находится в `build/diagnostics/E-InkHomeArt-diagnostics.bin`.
 
 ## Что произойдёт при включении
 
@@ -87,7 +91,7 @@ GT911 — 100 мс. Автоматической перезагрузки нет
 Интервал 10 секунд предназначен для короткой проверки собранной платы.
 Для длительной эксплуатации следует увеличить его по рекомендациям панели:
 [Good Display рекомендует паузы между полными обновлениями и сон после обновления](https://www.good-display.com/news/238.html).
-Параметр доступен в `menuconfig → E-InkHomeArt diagnostics`.
+Параметр доступен в `menuconfig → E-InkHomeArt` при выключенном LED-тесте.
 
 ## Пять страниц
 
@@ -151,8 +155,9 @@ Studio (компонент C++ Clang tools for Windows) и `lld-link`. Пути 
 64 преобразования углов для восьми ориентаций и попадания в мишени; создаёт PNG.
 Готовая DLL для компьютера не нужна ESP32 и не входит в прошивку.
 
-`pytest_diagnostics.py` — отдельная проверка загрузки и появления `LIVE` для
-подключённой ESP32-S3 с pytest-embedded. Подготовка в отдельном Python-окружении:
+`pytest_diagnostics.py` проверяет запуск выбранного режима на подключённой
+ESP32-S3 с pytest-embedded: `LED TEST READY` для LED-теста либо `DIAGNOSTICS READY`
+и `LIVE` для полной диагностики. Подготовка в отдельном Python-окружении:
 
 ```sh
 python -m venv .venv-test
@@ -161,10 +166,10 @@ python -m venv .venv-test
 ```
 
 На Linux/macOS путь к Python — `.venv-test/bin/python`. Сбор теста (`collect-only`)
-проверен без платы. Чтобы выполнить его на собранной плате после `idf.py build`:
+проверен без платы. Чтобы выполнить его для полной диагностики после её сборки:
 
 ```sh
-.venv-test/Scripts/python -m pytest --embedded-services=esp,idf --target=esp32s3 --port=PORT pytest_diagnostics.py
+.venv-test/Scripts/python -m pytest --embedded-services=esp,idf --target=esp32s3 --build-dir=build/diagnostics --port=PORT pytest_diagnostics.py
 ```
 
 Этот аппаратный тест прошивает и перезапускает подключённое устройство.

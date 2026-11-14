@@ -34,6 +34,8 @@ typedef struct {
 /* Pure renderer: 1 means black in the logical frame, MSB first, row-major.
  * Caller may flip all bytes to match native panel polarity. No hardware access. */
 bool diagnostic_screen_render(uint8_t *frame, size_t length, const diagnostic_screen_t *screen);
+/* Same patterns and geometry, with UART/BOOT instructions for partial assembly. */
+bool display_touch_screen_render(uint8_t *frame, size_t length, const diagnostic_screen_t *screen);
 /* Orientation 0 auto-swaps a portrait sensor to landscape; 1 toggles that swap,
  * bit 1 mirrors X and bit 2 mirrors Y. Raw sensor config is never overwritten. */
 bool diagnostic_map_touch(uint16_t raw_x, uint16_t raw_y, uint16_t native_width,
