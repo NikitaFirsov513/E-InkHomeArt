@@ -1,10 +1,15 @@
 # Overlay after sdkconfig.defaults; UART-based display/touch assembly test.
 CONFIG_APP_DISPLAY_TOUCH_TEST=y
+CONFIG_DISPLAY_TOUCH_PARTIAL_TEST=y
+CONFIG_DISPLAY_TOUCH_SPI_MHZ=8
+CONFIG_DISPLAY_TOUCH_TARGET_MS=350
+# Experimental drawing profile; vendor recommendation is 5. See DISPLAY_TOUCH_TEST.md.
+CONFIG_DISPLAY_TOUCH_PARTIALS_BEFORE_CLEAN=30
 # CONFIG_APP_LED_TEST is not set
 # CONFIG_SPIRAM is not set
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
 CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
-# Good Display recommends >=180 s between SPI full refreshes.
+# Conservative full-only interval, used when the interactive partial bench is off.
 CONFIG_DIAG_MIN_REFRESH_SECONDS=180

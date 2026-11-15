@@ -4,6 +4,7 @@
 #include "uc8179.h"
 #include "gt911.h"
 #include "lis2dw12_idf.h"
+#include "touch_test.h"
 
 /* No CRT or device is required by the test DLL. Only the SDK boundary is
  * simulated; uc8179.c, gt911.c, lis2dw12_idf.c and the ST driver are real code. */
@@ -76,6 +77,8 @@ static bool spi_driver_ready;
 static unsigned spi_calls, spi_fail_at, spi_devices;
 static size_t bus_max, largest_chunk, old_size, new_size;
 static uint8_t spi_command, old_frame[UC8179_FRAME_BYTES], new_frame[UC8179_FRAME_BYTES];
+static uint8_t spi_settings[256][10];
+static unsigned spi_command_count[256];
 esp_err_t spi_bus_get_max_transaction_len(spi_host_device_t host, size_t *length)
 {
     (void)host;
@@ -99,6 +102,7 @@ esp_err_t spi_device_polling_transmit(spi_device_handle_t device, spi_transactio
     if (++spi_calls == spi_fail_at) return ESP_ERR_TIMEOUT;
     if (tx->flags & SPI_TRANS_USE_TXDATA) {
         spi_command = tx->tx_data[0];
+        ++spi_command_count[spi_command];
         if (spi_command == 0x10) old_size = 0;
         if (spi_command == 0x13) new_size = 0;
         return tx->length == 8 ? ESP_OK : ESP_ERR_INVALID_ARG;
@@ -111,7 +115,7 @@ esp_err_t spi_device_polling_transmit(spi_device_handle_t device, spi_transactio
         uint8_t *frame = spi_command == 0x10 ? old_frame : new_frame;
         if (*size + length > UC8179_FRAME_BYTES) return ESP_ERR_INVALID_SIZE;
         memcpy(frame + *size,tx->tx_buffer,length); *size += length;
-    }
+    } else if (length <= sizeof(spi_settings[0])) memcpy(spi_settings[spi_command],tx->tx_buffer,length);
     return ESP_OK;
 }
 
@@ -354,13 +358,209 @@ static int test_lis_reset_timeout(void)
     return 0;
 }
 
+static int test_epd_partial(void)
+{
+    static uint8_t frame[UC8179_FRAME_BYTES];
+    uc8179_config_t cfg = epd_config(); uc8179_handle_t dev;
+    CHECK(uc8179_new(&cfg,&dev) == ESP_OK);
+    CHECK(uc8179_display_partial(dev,frame,sizeof(frame)) == ESP_ERR_INVALID_STATE);
+    CHECK(uc8179_init(dev) == ESP_OK);
+    CHECK(uc8179_prepare_partial(dev,frame,sizeof(frame)) == ESP_ERR_INVALID_STATE);
+    memset(frame,0x35,sizeof(frame));
+    CHECK(uc8179_display_frame(dev,frame,sizeof(frame)) == ESP_OK);
+    CHECK(uc8179_prepare_partial(dev,frame,sizeof(frame)-1) == ESP_ERR_INVALID_ARG);
+    CHECK(uc8179_prepare_partial(dev,frame,sizeof(frame)) == ESP_OK);
+    CHECK(old_size == sizeof(frame) && memcmp(old_frame,frame,sizeof(frame)) == 0);
+    CHECK(spi_settings[0xe0][0] == 2 && spi_settings[0xe5][0] == 0x6e);
+    CHECK(spi_settings[0x50][0] == 0xa9 && spi_settings[0x50][1] == 7);
+    CHECK(uc8179_display_frame(dev,frame,sizeof(frame)) == ESP_ERR_INVALID_STATE);
+    unsigned on = spi_command_count[4], off = spi_command_count[2];
+    CHECK(uc8179_power_off(dev) == ESP_OK && spi_command_count[2] == off+1);
+    memset(frame,0xc9,sizeof(frame));
+    CHECK(uc8179_display_partial(dev,frame,sizeof(frame)) == ESP_OK);
+    CHECK(spi_command_count[4] == on+1 && spi_command_count[0x91] == 1 && spi_command_count[0x92] == 1);
+    CHECK(new_size == sizeof(frame) && memcmp(new_frame,frame,sizeof(frame)) == 0);
+    const uint8_t window[] = {0,0,3,0x1f,0,0,1,0xdf,1};
+    CHECK(memcmp(spi_settings[0x90],window,sizeof(window)) == 0);
+    CHECK(spi_command_count[7] == 0); /* No deep sleep between partial frames. */
+    /* An active drawing burst must not repeat PON or RESET between frames. */
+    unsigned reset_before = spi_command_count[0x00];
+    for (unsigned i = 0; i < 4; ++i) {
+        CHECK(uc8179_display_partial_region(dev,frame,sizeof(frame),24,100,16,2) == ESP_OK);
+        uc8179_update_stats_t timing;
+        CHECK(uc8179_get_update_stats(dev,&timing) == ESP_OK);
+        CHECK(timing.power_on_us == 0 && timing.power_off_us == 0 && timing.bytes == 4);
+    }
+    CHECK(spi_command_count[4] == on+1 && spi_command_count[0x00] == reset_before);
+    CHECK(uc8179_power_off(dev) == ESP_OK);
+    spi_fail_at = spi_calls+6; /* First pixel chunk after power-on/window. */
+    CHECK(uc8179_display_partial(dev,frame,sizeof(frame)) == ESP_ERR_TIMEOUT);
+    CHECK(uc8179_display_partial(dev,frame,sizeof(frame)) == ESP_ERR_INVALID_STATE);
+    spi_fail_at = 0;
+    CHECK(uc8179_power_off(dev) == ESP_OK);
+    CHECK(uc8179_init(dev) == ESP_OK && uc8179_display_frame(dev,frame,sizeof(frame)) == ESP_OK);
+    CHECK(uc8179_prepare_partial(dev,frame,sizeof(frame)) == ESP_OK);
+    CHECK(uc8179_power_off(dev) == ESP_OK && uc8179_sleep(dev) == ESP_OK);
+    CHECK(uc8179_display_partial(dev,frame,sizeof(frame)) == ESP_ERR_INVALID_STATE);
+    CHECK(uc8179_delete(dev) == ESP_OK && allocation_count == 0 && spi_devices == 0);
+    return 0;
+}
+
+static int test_epd_partial_region(void)
+{
+    static uint8_t frame[UC8179_FRAME_BYTES];
+    for (unsigned i = 0; i < sizeof(frame); ++i) frame[i] = (uint8_t)(i*13+7);
+    uc8179_config_t cfg = epd_config(); uc8179_handle_t dev;
+    CHECK(uc8179_new(&cfg,&dev) == ESP_OK && uc8179_init(dev) == ESP_OK);
+    CHECK(uc8179_display_frame(dev,frame,sizeof(frame)) == ESP_OK);
+    CHECK(uc8179_prepare_partial(dev,frame,sizeof(frame)) == ESP_OK);
+    CHECK(uc8179_power_off(dev) == ESP_OK);
+    CHECK(uc8179_display_partial_region(dev,frame,sizeof(frame),9,21,1,1) == ESP_OK);
+    const uint8_t small[] = {0,8,0,23,0,21,0,22,1};
+    CHECK(memcmp(spi_settings[0x90],small,sizeof(small)) == 0 && new_size == 4);
+    CHECK(new_frame[0] == frame[2101] && new_frame[1] == frame[2102]);
+    CHECK(new_frame[2] == frame[2201] && new_frame[3] == frame[2202]);
+    uc8179_update_stats_t stats;
+    CHECK(uc8179_get_update_stats(dev,&stats) == ESP_OK && stats.bytes == 4);
+    CHECK(stats.power_on_us >= 1000 && stats.refresh_us >= 300);
+    unsigned calls = spi_calls;
+    CHECK(uc8179_display_partial_region(dev,frame,sizeof(frame),800,0,1,1) == ESP_ERR_INVALID_ARG);
+    CHECK(uc8179_display_partial_region(dev,frame,sizeof(frame),799,0,2,1) == ESP_ERR_INVALID_ARG);
+    CHECK(uc8179_display_partial_region(dev,frame,sizeof(frame),0,479,1,2) == ESP_ERR_INVALID_ARG);
+    CHECK(uc8179_display_partial_region(dev,frame,sizeof(frame),0,0,0,2) == ESP_ERR_INVALID_ARG);
+    CHECK(uc8179_display_partial_region(dev,frame,sizeof(frame)-1,0,0,8,2) == ESP_ERR_INVALID_ARG);
+    CHECK(spi_calls == calls);
+    CHECK(uc8179_display_partial_region(dev,frame,sizeof(frame),799,479,1,1) == ESP_OK);
+    const uint8_t last[] = {3,0x10,3,0x1f,1,0xde,1,0xdf,1};
+    CHECK(memcmp(spi_settings[0x90],last,sizeof(last)) == 0 && new_size == 4);
+    CHECK(new_frame[0] == frame[47898] && new_frame[1] == frame[47899]);
+    CHECK(new_frame[2] == frame[47998] && new_frame[3] == frame[47999]);
+    CHECK(uc8179_sleep(dev) == ESP_OK && uc8179_delete(dev) == ESP_OK && allocation_count == 0);
+    return 0;
+}
+
+static int test_cleanup_policy(void)
+{
+    touch_test_t t = { .contacts = 1, .last_activity_us = 1000000 };
+    CHECK(touch_test_refresh_policy(&t,false,0,30,0,1000001) == TOUCH_REFRESH_FULL);
+    CHECK(touch_test_refresh_policy(&t,true,29,30,0,1000001) == TOUCH_REFRESH_PARTIAL);
+    CHECK(touch_test_refresh_policy(&t,true,30,30,0,9000000) == TOUCH_REFRESH_WAIT);
+    t.contacts = 0;
+    CHECK(touch_test_refresh_policy(&t,true,30,30,0,2199999) == TOUCH_REFRESH_WAIT);
+    CHECK(touch_test_refresh_policy(&t,true,30,30,0,2200000) == TOUCH_REFRESH_FULL);
+    CHECK(touch_test_refresh_policy(&t,true,5,5,0,2200000) == TOUCH_REFRESH_FULL);
+    CHECK(touch_test_refresh_policy(&t,true,4,5,0,2200000) == TOUCH_REFRESH_PARTIAL);
+    t.contacts = 5; t.full_generation = 7;
+    CHECK(touch_test_refresh_policy(&t,true,30,30,6,1000001) == TOUCH_REFRESH_FULL);
+    CHECK(touch_test_refresh_policy(&t,true,0,30,7,1000001) == TOUCH_REFRESH_PARTIAL);
+    touch_test_clear(&t);
+    CHECK(t.full_generation == 7 && t.last_activity_us == 1000000);
+    CHECK(touch_test_refresh_policy(&t,true,0,30,6,1000001) == TOUCH_REFRESH_FULL);
+    return 0;
+}
+
+static int test_changed_rectangle(void)
+{
+    static uint8_t before[DIAG_FRAME_BYTES], after[DIAG_FRAME_BYTES];
+    memset(before,0,sizeof(before)); memset(after,0,sizeof(after));
+    touch_test_region_t r = {99,99,99,99};
+    CHECK(!touch_test_changed_region(before,after,sizeof(before),&r) && r.width == 0);
+    after[0] = 0x80;
+    CHECK(touch_test_changed_region(before,after,sizeof(before),&r));
+    CHECK(r.x == 0 && r.y == 0 && r.width == 16 && r.height == 2);
+    after[0] = 0; after[DIAG_FRAME_BYTES-1] = 1;
+    CHECK(touch_test_changed_region(before,after,sizeof(before),&r));
+    CHECK(r.x == 784 && r.y == 478 && r.width == 16 && r.height == 2);
+    after[0] = 1;
+    CHECK(touch_test_changed_region(before,after,sizeof(before),&r));
+    CHECK(r.x == 0 && r.y == 0 && r.width == 800 && r.height == 480);
+    CHECK(!touch_test_changed_region(before,after,sizeof(before)-1,&r) && r.width == 0);
+    CHECK(!touch_test_changed_region(NULL,after,sizeof(before),&r));
+    return 0;
+}
+
+static int test_gt_fresh_release(void)
+{
+    gt911_config_t cfg = touch_config(); gt911_handle_t dev;
+    CHECK(gt911_new(&cfg,&dev) == ESP_OK);
+    esp_lcd_touch_point_data_t points[GT911_MAX_POINTS];
+    uint8_t count = 99; bool fresh = true;
+    CHECK(gt911_read_frame(dev,points,&count,&fresh) == ESP_OK && !fresh && count == 0);
+    gt_ready = true; gt_samples = 1;
+    CHECK(gt911_read_frame(dev,points,&count,&fresh) == ESP_OK && fresh && count == 1);
+    CHECK(gt911_read_frame(dev,points,&count,&fresh) == ESP_OK && !fresh && count == 0);
+    gt_ready = true; gt_samples = 0;
+    CHECK(gt911_read_frame(dev,points,&count,&fresh) == ESP_OK && fresh && count == 0);
+    gt_ready = true; gt_samples = 5;
+    CHECK(gt911_read_frame(dev,points,&count,&fresh) == ESP_OK && fresh && count == 5);
+    gt_ready = true; gt_samples = 6;
+    CHECK(gt911_read_frame(dev,points,&count,&fresh) == ESP_ERR_INVALID_RESPONSE && !fresh && count == 0);
+    gt_rx_fail = true; fresh = true;
+    CHECK(gt911_read_frame(dev,points,&count,&fresh) == ESP_ERR_TIMEOUT && !fresh && count == 0);
+    CHECK(gt911_read_frame(dev,points,&count,NULL) == ESP_ERR_INVALID_ARG && count == 0);
+    CHECK(gt911_delete(dev) == ESP_OK && allocation_count == 0);
+    return 0;
+}
+
+static int test_touch_bench_model(void)
+{
+    touch_test_t t = {0};
+    touch_test_clear(&t);
+    touch_test_point_t p[5] = {{50,136,9,1},{200,250,12,2}};
+    CHECK(t.screen.touch_x == -1 && t.contacts == 0);
+    CHECK(touch_test_accept(&t,p,1,800,480));
+    CHECK(t.contacts == 1 && t.strokes == 1 && t.trace_count == 1 && t.coverage == 1);
+    CHECK(touch_test_accept(&t,p,1,800,480) && t.trace_count == 1 && t.strokes == 1);
+    p[0].x = 70;
+    CHECK(touch_test_accept(&t,p,1,800,480) && t.trace_count == 2);
+    CHECK(touch_test_accept(&t,NULL,0,800,480) && t.contacts == 0);
+    CHECK(touch_test_accept(&t,p,1,800,480) && t.strokes == 2 && t.trace_count == 3);
+    CHECK(t.trace[1].stroke != t.trace[2].stroke);
+    CHECK(touch_test_accept(&t,p,2,800,480) && t.max_contacts == 2);
+    CHECK(touch_test_accept(&t,p,1,800,480) && t.trace_count == 4);
+    CHECK(t.trace[2].stroke != t.trace[3].stroke);
+    uint32_t samples = t.screen.touch_samples;
+    p[1].x = 800;
+    CHECK(!touch_test_accept(&t,p,2,800,480) && t.screen.touch_samples == samples);
+    CHECK(!touch_test_accept(&t,p,6,800,480));
+    CHECK(!touch_test_accept(&t,NULL,1,800,480));
+    for (unsigned row = 0; row < 3; ++row) for (unsigned col = 0; col < 8; ++col) {
+        p[0].x = (uint16_t)(col*100+50); p[0].y = (uint16_t)(80+row*112+56);
+        CHECK(touch_test_accept(&t,p,1,800,480));
+    }
+    CHECK(t.coverage == TOUCH_TEST_ALL_CELLS);
+    for (unsigned i = 0; i < 300; ++i) {
+        p[0].x = (uint16_t)((i*7)%800);
+        CHECK(touch_test_accept(&t,p,1,800,480));
+    }
+    CHECK(t.trace_count == TOUCH_TEST_TRACE && t.trace_next < TOUCH_TEST_TRACE);
+    CHECK(touch_test_button(20,438) == 'r' && touch_test_button(259,479) == 'r');
+    CHECK(touch_test_button(280,450) == 'c' && touch_test_button(779,479) == 'n');
+    CHECK(!touch_test_button(800,450) && !touch_test_button(20,437));
+    CHECK(!touch_test_button(260,450) && !touch_test_button(-1,479));
+    CHECK(touch_test_next_ui_page(DIAG_GRID) == DIAG_STATUS);
+    CHECK(touch_test_next_ui_page(DIAG_STATUS) == DIAG_GRID);
+    CHECK(!touch_test_controls_ready(DIAG_GRID,DIAG_WHITE));
+    CHECK(!touch_test_controls_ready(UINT32_MAX,DIAG_GRID));
+    CHECK(touch_test_controls_ready(DIAG_GRID,DIAG_GRID));
+    touch_test_clear(&t);
+    CHECK(t.trace_count == 0 && t.coverage == 0 && t.strokes == 0 && t.max_contacts == 0);
+    return 0;
+}
+
 static const struct { const char *name; int (*run)(void); } cases[] = {
     {"UC8179 allocation / attach failures",test_epd_alloc_failures},
     {"UC8179 stuck BUSY timeout",test_epd_busy_timeout},
     {"UC8179 frame chunks, transfer recovery, sleep, cleanup",test_epd_frame_and_recovery},
+    {"UC8179 OTP partial, OLD baseline, full window, POF/wake and recovery",test_epd_partial},
+    {"UC8179 cropped partial stride, byte alignment, last pixel and timing",test_epd_partial_region},
+    {"Changed rectangle: no-op, single byte, last row/column and full frame",test_changed_rectangle},
+    {"Cleanup: partial budget, release/idle boundary, manual request and clear",test_cleanup_policy},
     {"GT911 allocation, absent device and wrong ID",test_gt_constructor_failures},
     {"GT911 explicit/automatic geometry validation",test_gt_geometry},
     {"GT911 fresh frame vs cached touch / release / I2C fault",test_gt_no_stale_touch},
+    {"GT911 fresh/no-report/release distinction and malformed report",test_gt_fresh_release},
+    {"Touch bench strokes, multitouch, coverage, ring and bounds",test_touch_bench_model},
     {"GT911 address, mirrored coordinates and wake pin direction",test_gt_sleep_and_mapping},
     {"LIS2DW12 I2C faults, WHO_AM_I, real ST register API and mg",test_lis_failures_and_reading},
     {"LIS2DW12 bounded reset and invalid configuration",test_lis_reset_timeout},
@@ -370,6 +570,8 @@ const char *host_case_name(int i) { return i >= 0 && i < host_case_count() ? cas
 const char *host_failure(void) { return failure ? failure : ""; }
 int host_case_run(int index)
 {
+    memset(spi_settings,0,sizeof(spi_settings));
+    memset(spi_command_count,0,sizeof(spi_command_count));
     if (index < 0 || index >= host_case_count()) return -1;
     memset(allocated,0,sizeof(allocated)); allocation_calls = allocation_fail_at = allocation_count = 0;
     invalid_free = false; failure = NULL; clock_us = 0; busy_level = 1;

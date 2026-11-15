@@ -34,6 +34,11 @@ esp_err_t gt911_get_native_resolution(gt911_handle_t device, uint16_t *width, ui
  * Task context only. Serialize operations on each device, including deletion. */
 esp_err_t gt911_read(gt911_handle_t device,
                     esp_lcd_touch_point_data_t points[GT911_MAX_POINTS], uint8_t *count);
+/* Unlike read(), distinguishes no new report (fresh=false) from a fresh
+ * release (fresh=true, count=0). On error fresh=false and count=0. */
+esp_err_t gt911_read_frame(gt911_handle_t device,
+                          esp_lcd_touch_point_data_t points[GT911_MAX_POINTS],
+                          uint8_t *count, bool *fresh);
 esp_err_t gt911_sleep(gt911_handle_t device);
 esp_err_t gt911_wake(gt911_handle_t device);
 /* Borrowed handle for registering an interrupt callback / GUI integration.

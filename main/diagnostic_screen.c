@@ -1,4 +1,6 @@
 #include "diagnostic_screen.h"
+#include "touch_test.h"
+#include <string.h>
 
 /* Small project-local 5x7 bitmap font. Uppercase ASCII keeps the test firmware
  * independent of GUI libraries, font downloads and filesystem assets. */
@@ -32,19 +34,27 @@ static const struct { char code; uint8_t rows[7]; } font[] = {
     {'<',{1,2,4,8,4,2,1}},      {'>',{16,8,4,2,4,8,16}},
 };
 
-static void pixel(uint8_t *frame, int x, int y, bool black)
-{
-    if (x < 0 || y < 0 || x >= DIAG_WIDTH || y >= DIAG_HEIGHT) return;
-    size_t pos = (size_t)y * (DIAG_WIDTH / 8) + (unsigned)x / 8;
-    uint8_t mask = (uint8_t)(0x80U >> (x & 7));
-    if (black) frame[pos] |= mask;
-    else frame[pos] &= (uint8_t)~mask;
-}
-
 static void rect(uint8_t *f, int x, int y, int w, int h, bool black)
 {
-    for (int yy = y; yy < y + h; ++yy)
-        for (int xx = x; xx < x + w; ++xx) pixel(f, xx, yy, black);
+    if (w <= 0 || h <= 0) return;
+    int64_t right = (int64_t)x+w, bottom = (int64_t)y+h;
+    int x0 = x < 0 ? 0 : x, y0 = y < 0 ? 0 : y;
+    int x1 = right > DIAG_WIDTH ? DIAG_WIDTH : (int)right;
+    int y1 = bottom > DIAG_HEIGHT ? DIAG_HEIGHT : (int)bottom;
+    if (x0 >= x1 || y0 >= y1) return;
+    unsigned first = (unsigned)x0/8, last = (unsigned)(x1-1)/8;
+    uint8_t left_mask = (uint8_t)(0xffU >> (x0&7));
+    uint8_t right_mask = (uint8_t)(0xffU << (7-((x1-1)&7)));
+    for (int yy = y0; yy < y1; ++yy) {
+        uint8_t *row = f+(size_t)yy*(DIAG_WIDTH/8);
+        uint8_t mask = first == last ? left_mask & right_mask : left_mask;
+        if (black) row[first] |= mask;
+        else row[first] &= (uint8_t)~mask;
+        if (first == last) continue;
+        if (last > first+1) memset(row+first+1,black ? 0xff : 0,last-first-1);
+        if (black) row[last] |= right_mask;
+        else row[last] &= (uint8_t)~right_mask;
+    }
 }
 
 static void box(uint8_t *f, int x, int y, int w, int h)
@@ -168,7 +178,8 @@ static bool render(uint8_t *f, size_t length, const diagnostic_screen_t *s, bool
         footer(f,display_touch);
     } else if (s->page == DIAG_CHECKER) {
         for (int y = 0; y < DIAG_HEIGHT; ++y)
-            for (int x = 0; x < DIAG_WIDTH; ++x) pixel(f,x,y,((x/16)+(y/16))%2 == 0);
+            for (int bx = 0; bx < DIAG_WIDTH/8; ++bx)
+                f[y*(DIAG_WIDTH/8)+bx] = ((bx/2+y/16)%2 == 0) ? 0xff : 0;
         rect(f,240,206,320,68,false); box(f,240,206,320,68);
         text(f,258,222,"16PX CHECKER",24,4,true);
     }
@@ -184,4 +195,67 @@ bool diagnostic_screen_render(uint8_t *f, size_t length, const diagnostic_screen
 bool display_touch_screen_render(uint8_t *f, size_t length, const diagnostic_screen_t *s)
 {
     return render(f,length,s,true);
+}
+
+static void trace_line(uint8_t *f, int x, int y, int end_x, int end_y)
+{
+    int dx = end_x-x, dy = end_y-y;
+    int sx = dx < 0 ? -1 : 1, sy = dy < 0 ? -1 : 1;
+    if (dx < 0) dx = -dx;
+    if (dy > 0) dy = -dy;
+    int error = dx+dy;
+    for (;;) {
+        if (y >= 80 && y < 416) rect(f,x,y,2,2,true);
+        if (x == end_x && y == end_y) break;
+        int twice = 2*error;
+        if (twice >= dy) { error += dy; x += sx; }
+        if (twice <= dx) { error += dx; y += sy; }
+    }
+}
+
+bool touch_test_screen_render(uint8_t *f, size_t length, const touch_test_t *t)
+{
+    if (!t || t->trace_count > TOUCH_TEST_TRACE || t->trace_next >= TOUCH_TEST_TRACE ||
+        t->contacts > TOUCH_TEST_POINTS) return false;
+    for (unsigned i = 0; i < t->trace_count; ++i)
+        if (t->trace[i].x >= DIAG_WIDTH || t->trace[i].y >= DIAG_HEIGHT) return false;
+    diagnostic_screen_t s = t->screen;
+    s.inverted = 0;
+    if (!render(f,length,&s,true)) return false;
+    if (s.page == DIAG_GRID) {
+        for (unsigned i = 0; i < TOUCH_TEST_CELLS; ++i) {
+            int x = (int)(i%8)*100, y = 80+(int)(i/8)*112;
+            box(f,x,y,100,112);
+            if (t->coverage & (UINT32_C(1)<<i)) rect(f,x+4,y+4,7,7,true);
+        }
+        unsigned start = (t->trace_next+TOUCH_TEST_TRACE-t->trace_count)%TOUCH_TEST_TRACE;
+        for (unsigned i = 0; i < t->trace_count; ++i) {
+            const touch_test_trace_t *p = &t->trace[(start+i)%TOUCH_TEST_TRACE];
+            const touch_test_trace_t *prev = &t->trace[(start+i+TOUCH_TEST_TRACE-1)%TOUCH_TEST_TRACE];
+            if (i && prev->stroke == p->stroke) trace_line(f,prev->x,prev->y,p->x,p->y);
+            else if (p->y >= 80 && p->y < 416) rect(f,p->x,p->y,3,3,true);
+        }
+        for (unsigned i = 0; i < t->contacts; ++i) {
+            const touch_test_point_t *p = &t->points[i];
+            if (p->x < DIAG_WIDTH && p->y >= 80 && p->y < 416) cross(f,p->x,p->y,11);
+        }
+        rect(f,145,96,510,40,false);
+        text(f,157,107,"5 TARGETS / TRACE / 24 CELLS",40,2,true);
+        rect(f,145,341,510,65,false);
+        text(f,157,351,s.details[0],40,2,true);
+        text(f,157,378,s.details[1],40,2,true);
+    }
+    if (s.page == DIAG_GRID || s.page == DIAG_STATUS) {
+        rect(f,550,39,240,12,true);
+        text(f,550,39,"TOUCH BENCH / V5",20,1,false);
+        rect(f,0,430,800,50,false);
+        const char *labels[] = {"SNAPSHOT", "CLEAR", "NEXT PAGE"};
+        for (unsigned i = 0; i < 3; ++i) {
+            int x = 20+(int)i*260;
+            box(f,x,438,240,40);
+            text(f,x+20,450,labels[i],16,2,true);
+        }
+    }
+    if (t->screen.inverted) for (size_t i = 0; i < length; ++i) f[i] ^= 0xff;
+    return true;
 }

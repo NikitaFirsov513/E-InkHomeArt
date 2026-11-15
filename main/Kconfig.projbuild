@@ -17,13 +17,56 @@ menu "E-InkHomeArt"
             accelerometer, ADC, charger control or external PSRAM is started.
             Use sdkconfig.defaults.diagnostics for full board diagnostics.
 
+    config DISPLAY_TOUCH_PARTIAL_TEST
+        bool "Interactive OTP partial-update bench test"
+        depends on APP_DISPLAY_TOUCH_TEST
+        default y
+        help
+            Short bench session matching Good Display GDEY075T7 partial example.
+            First update is full. Cleanup follows the configured partial budget
+            after release and 1.2 seconds of quiet time. The vendor recommends 5.
+            Short active bursts keep power on for at most five partials;
+            idle/release powers off high voltages, retaining digital RAM.
+            Requests are coalesced; BUSY must finish before the next update.
+            Disable for the conservative full-only mode with a 180-second gap.
+
+    config DISPLAY_TOUCH_SPI_MHZ
+        int "Display/touch test SPI clock (MHz)"
+        depends on APP_DISPLAY_TOUCH_TEST
+        range 1 10
+        default 8
+        help
+            The model-specific Good Display example uses 10 MHz. This bench
+            starts at 8 MHz; lower to 4 or 1 if physical image corruption occurs.
+
+    config DISPLAY_TOUCH_PARTIALS_BEFORE_CLEAN
+        int "Partial updates before an idle full clean"
+        depends on DISPLAY_TOUCH_PARTIAL_TEST
+        range 5 100
+        default 5
+        help
+            Good Display recommends a full clean after five partial updates.
+            Larger values are experimental and increase residual image/ghosting.
+            At the limit, drawing pauses until release and 1.2 seconds idle;
+            touch reports, UART and the heartbeat continue. UART f forces a clean.
+
+    config DISPLAY_TOUCH_TARGET_MS
+        int "Partial test minimum start-to-start interval (milliseconds)"
+        depends on DISPLAY_TOUCH_PARTIAL_TEST
+        range 300 2000
+        default 350
+        help
+            Includes transfer, BUSY and power-off time, instead of adding a pause
+            after them. The controller is never refreshed while still BUSY.
+
     if !APP_LED_TEST
     config DIAG_MIN_REFRESH_SECONDS
-        int "Minimum interval between manually requested screen updates (seconds)"
-        range 5 3600
-        default 10
+        int "Minimum interval between full screen updates (seconds)"
+        range 180 3600
+        default 180
         help
-            Short bench-test interval; the screen never refreshes automatically.
-            For prolonged operation use the panel manufacturer's recommended interval.
+            Good Display recommends at least 180 seconds between SPI full refreshes.
+            Used by full-only diagnostics. Interactive partial bench instead follows
+            the configured partial budget and an idle full clean.
     endif
 endmenu

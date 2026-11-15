@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>E-InkHomeArt — живой тест тача</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f2f4f5;color:#17232c;font:16px system-ui,sans-serif}main{max-width:1120px;margin:32px auto;padding:0 20px}h1{font-size:28px;margin:0 0 10px}p{line-height:1.5;color:#52606c}.bar{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}button{background:#fff;color:#173c50;border:1px solid #c2cdd3;border-radius:8px;padding:10px 16px;font:inherit;cursor:pointer}button.primary{background:#176b79;color:white;border-color:#176b79}button:disabled{opacity:.45;cursor:default}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:18px 0}.stat{background:white;border-radius:10px;padding:15px}.stat span{display:block;color:#65717a;font-size:13px}.stat b{display:block;font-size:26px;margin-top:4px}canvas{width:100%;height:auto;display:block;background:white;border:1px solid #bac7ce;border-radius:10px;touch-action:none}.note{font-size:14px}.status{padding:10px 14px;border-radius:8px;background:#e2e9ed}pre{background:#17232c;color:#dbe7ec;padding:16px;max-height:250px;overflow:auto;border-radius:10px;font-size:12px;white-space:pre-wrap}#fingers{min-height:26px;font-family:monospace}a{color:#176b79}@media(max-width:650px){.stats{grid-template-columns:repeat(2,1fr)}h1{font-size:23px}}
+</style>
+<main>
+<h1>Живой тест GT911</h1>
+<p>Касайся физического экрана: здесь сразу видны линии, пальцы и покрытие. Это карта координат 800×480, а не копия текущего изображения E-Ink.</p>
+<div id="status" class="status" role="status">Не подключено. Закрой ESP-IDF Monitor, затем выбери COM7.</div>
+<div class="bar"><button id="connect" class="primary">Подключить UART · 115200</button><button id="disconnect" disabled>Отключить</button><button id="download">Сохранить отчёт JSON</button></div>
+<div class="stats"><div class="stat"><span>Мишени</span><b id="targets">0 / 5</b></div><div class="stat"><span>Зоны тача</span><b id="cells">0 / 24</b></div><div class="stat"><span>Максимум пальцев</span><b id="max">0</b></div><div class="stat"><span>Нажатия / жесты</span><b id="strokes">0</b></div><div class="stat"><span>Ошибки чтения</span><b id="errors">—</b></div></div>
+<canvas id="canvas" width="800" height="480" aria-label="Карта физических касаний"></canvas>
+<p id="fingers">Нет активных касаний.</p>
+<div class="bar" id="commands"><button data-command="r">Снимок E-Ink</button><button data-command="f">Полная очистка E-Ink</button><button data-command="g">Сетка</button><button data-command="c">Очистить след</button><button data-command="n">Заливки / страницы</button><button data-command="t">Ориентация тача</button><button data-command="i">Инверсия</button><button data-command="a">Автоснимок вкл/выкл</button><button data-command="s">Статистика</button></div>
+<p id="panel-mode" class="note">Режим панели ещё не получен. Нажми «Статистика».</p>
+<p id="panel-perf" class="note">Измерения E-Ink появятся после следующего обновления.</p>
+<p class="note">V5: SPI 8 МГц, целевой интервал — 350 мс, фактический темп ограничен BUSY. Короткие серии сохраняют питание между кадрами. Тестовый лимит 30 partial экспериментальный: возможен остаточный след, производитель рекомендует пять. На лимите экран ждёт отпускания и паузы 1,2 с, затем очищается. «Полная очистка E-Ink» запускает её вручную. Full-only сохраняет паузу 180 с. Размер касания GT911 — условное значение, не измерение силы нажатия.</p>
+<pre id="log" aria-label="Журнал UART"></pre>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id), ctx=$('canvas').getContext('2d');
+const targetPoints=[[40,110],[760,110],[40,390],[760,390],[400,250]];
+const colors=['#146d91','#a64870','#557d2d','#956b1b','#6d55a2'];
+let port=null,reader=null,writer=null,reading=null,stop=false,logLines=[],records=[],paths=[],lastPoints=new Map();
+let state={count:0,map:0,targets:0,cells:0,max:0,strokes:0,errors:null,points:[]};
+let startedAt=null;
+let lastPanelPerformance=null;
+function reset(map=state.map){state={count:0,map,targets:0,cells:0,max:0,strokes:0,errors:null,points:[]};paths=[];lastPoints.clear();records=[];startedAt=new Date().toISOString();draw();}
+const popcount=n=>{let c=0;for(let v=n>>>0;v;v>>>=1)c+=v&1;return c};
+function draw(){
+ ctx.fillStyle='#fff';ctx.fillRect(0,0,800,480);
+ for(let i=0;i<24;i++){const x=(i%8)*100,y=80+Math.floor(i/8)*112;ctx.fillStyle=state.cells&(1<<i)?'#dfefe5':'#f5f7f7';ctx.fillRect(x,y,100,112);ctx.strokeStyle='#d2dde1';ctx.strokeRect(x+.5,y+.5,99,111);}
+ ctx.fillStyle='#172f40';ctx.font='bold 20px system-ui';ctx.fillText('GT911 / LIVE TOUCH',20,32);ctx.font='14px system-ui';ctx.fillText(`MAP ${state.map} · 800 × 480 · ${state.count} CONTACTS`,20,56);
+ for(const p of paths){ctx.strokeStyle=colors[p.id%5];ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(p.ax,p.ay);ctx.lineTo(p.x,p.y);ctx.stroke();}
+ targetPoints.forEach(([x,y],i)=>{ctx.strokeStyle=state.targets&(1<<i)?'#218153':'#466675';ctx.lineWidth=2;ctx.strokeRect(x-15,y-15,30,30);ctx.beginPath();ctx.moveTo(x-23,y);ctx.lineTo(x+23,y);ctx.moveTo(x,y-23);ctx.lineTo(x,y+23);ctx.stroke();if(state.targets&(1<<i)){ctx.fillStyle='#218153';ctx.fillRect(x-5,y-5,10,10);}});
+ for(const p of state.points){ctx.strokeStyle=colors[p.id%5];ctx.fillStyle=colors[p.id%5];ctx.lineWidth=3;ctx.beginPath();ctx.arc(p.x,p.y,12,0,Math.PI*2);ctx.stroke();ctx.font='bold 13px monospace';ctx.fillText(`#${p.id} ${p.x},${p.y}`,Math.min(p.x+16,650),Math.max(p.y-16,74));}
+ ['SNAPSHOT','CLEAR','NEXT PAGE'].forEach((s,i)=>{ctx.strokeStyle='#526b77';ctx.strokeRect(20+i*260,438,240,40);ctx.fillStyle='#284b60';ctx.font='15px system-ui';ctx.fillText(s,40+i*260,463);});
+ $('targets').textContent=`${popcount(state.targets)} / 5`;$('cells').textContent=`${popcount(state.cells)} / 24`;$('max').textContent=state.max;$('strokes').textContent=state.strokes;$('errors').textContent=state.errors===null?'—':state.errors;
+ $('fingers').textContent=state.points.length?state.points.map(p=>`ID ${p.id}: X=${p.x} Y=${p.y} SIZE=${p.size}`).join(' | '):'Нет активных касаний.';
+}
+function receive(line){
+ line=line.replace(/\x1b\[[0-9;]*m/g,'');logLines.push(line);if(logLines.length>180)logLines.shift();$('log').textContent=logLines.join('\n');$('log').scrollTop=$('log').scrollHeight;
+ let resetMatch=line.match(/TEST_RESET map=(\d+)/);if(resetMatch){reset(Number(resetMatch[1]));return;}
+ let result=line.match(/RESULT .*?errors=(\d+)/);if(result){state.errors=Number(result[1]);draw();}
+ let mode=line.match(/mode=(partial-bench|full-only)/);if(mode)$('panel-mode').textContent=mode[1]==='partial-bench'?'Панель: интерактивный OTP partial bench. Скорость смотри в EPD PERF.':'Панель: full-only / пауза 180 с.';
+ let perf=line.match(/EPD PERF (PARTIAL|FULL) bytes=(\d+) render=(\d+)ms power=(\d+)ms spi=(\d+)ms busy=(\d+)ms off=(\d+)ms total=(\d+)ms/);
+ if(perf){const [bytes,render,power,spi,busy,off,total]=perf.slice(2).map(Number);lastPanelPerformance={time:new Date().toISOString(),mode:perf[1],bytes,render,power,spi,busy,off,total};$('panel-perf').textContent=`${perf[1]}: ${bytes} байт · рендер ${render} мс · включение ${power} мс · SPI ${spi} мс · BUSY ${busy} мс · выключение ${off} мс · обновление ${total} мс.`;}
+ let m=line.match(/TOUCH2 count=(\d+) map=(\d+) targets=(\d+) cells=(\d+) strokes=(\d+) max=(\d+) points=([^ ]*) raw=(\d+),(\d+)/);if(!m)return;
+ const [count,map,targets,cells,strokes,max]=m.slice(1,7).map(Number);
+ const points=m[7]?m[7].split(',').map(p=>{const[id,x,y,size]=p.split(':').map(Number);return{id,x,y,size}}):[];
+ if(count>5||points.length!==count||points.some(p=>![p.id,p.x,p.y,p.size].every(Number.isFinite)||p.x<0||p.x>799||p.y<0||p.y>479))return;
+ if(map!==state.map)reset(map);
+ const next=new Map();for(const p of points){const old=lastPoints.get(p.id);if(old)paths.push({id:p.id,ax:old.x,ay:old.y,x:p.x,y:p.y});next.set(p.id,p);}lastPoints=next;if(paths.length>4096)paths.splice(0,paths.length-4096);
+ Object.assign(state,{count,map,targets,cells,strokes,max,points});if(!startedAt)startedAt=new Date().toISOString();records.push({time:new Date().toISOString(),...state,points:[...points]});if(records.length>10000)records.shift();draw();
+}
+async function send(command){if(!writer)return;try{await writer.write(new TextEncoder().encode(command+'\n'));}catch(e){$('status').textContent='Ошибка записи: '+e.message;}}
+function controls(connected){$('connect').disabled=connected;$('disconnect').disabled=!connected;document.querySelectorAll('[data-command]').forEach(b=>b.disabled=!connected);}
+async function readLoop(){let pending='',decoder=new TextDecoder();try{while(!stop){const{value,done}=await reader.read();if(done)break;pending+=decoder.decode(value,{stream:true});const lines=pending.split(/\r?\n/);pending=lines.pop();for(const line of lines)if(line)receive(line);if(pending.length>8192)pending='';}}catch(e){if(!stop)$('status').textContent='Ошибка UART: '+e.message;}finally{reader.releaseLock();reader=null;}}
+async function disconnect(){stop=true;if(reader)await reader.cancel().catch(()=>{});if(reading)await reading;reading=null;if(writer){writer.releaseLock();writer=null;}if(port){await port.close().catch(()=>{});port=null;}controls(false);$('status').textContent='Отключено. Последние результаты сохранены до следующего подключения.';}
+$('connect').onclick=async()=>{if(!('serial'in navigator)){ $('status').textContent='Нужен Chrome или Edge и адрес localhost / HTTPS.';return;}try{port=await navigator.serial.requestPort();await port.open({baudRate:115200,dataBits:8,stopBits:1,parity:'none',flowControl:'none'});writer=port.writable.getWriter();reader=port.readable.getReader();stop=false;reset();logLines=[];controls(true);$('status').textContent='UART подключён. Касайся физического экрана. E-Ink обновляется отдельно.';reading=readLoop();await send('s');}catch(e){await disconnect();$('status').textContent='Не удалось подключиться: '+e.message;}};
+$('disconnect').onclick=disconnect;
+document.querySelectorAll('[data-command]').forEach(b=>b.onclick=()=>send(b.dataset.command));
+$('download').onclick=()=>{const report={device:'E-InkHomeArt / GT911',startedAt,exportedAt:new Date().toISOString(),state,lastPanelPerformance,tests:{targets5:state.targets===31,coverage24:state.cells===0xffffff,multitouch2:state.max>=2},records,notes:'Software observations only. Physical E-Ink image, wiring and panel assembly need visual checks.'};const url=URL.createObjectURL(new Blob([JSON.stringify(report,null,2)],{type:'application/json'}));const a=document.createElement('a');a.href=url;a.download='E-InkHomeArt-touch-report.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+controls(false);draw();
+</script>
+</html>

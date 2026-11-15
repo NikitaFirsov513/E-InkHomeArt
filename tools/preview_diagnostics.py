@@ -24,6 +24,23 @@ class Screen(ct.Structure):
     ]
 
 
+class Point(ct.Structure):
+    _fields_ = [('x', ct.c_uint16), ('y', ct.c_uint16), ('size', ct.c_uint16), ('id', ct.c_uint16)]
+
+
+class Trace(ct.Structure):
+    _fields_ = [('x', ct.c_uint16), ('y', ct.c_uint16), ('stroke', ct.c_uint32)]
+
+
+class TouchTest(ct.Structure):
+    _fields_ = [('screen', Screen), ('contacts', ct.c_uint32), ('max_contacts', ct.c_uint32),
+                ('strokes', ct.c_uint32), ('coverage', ct.c_uint32), ('errors', ct.c_uint32),
+                ('trace_count', ct.c_uint32), ('trace_next', ct.c_uint32),
+                ('points', Point * 5), ('trace', Trace * 128),
+                ('trace_stroke', ct.c_uint32), ('trace_id', ct.c_uint16), ('trace_active', ct.c_bool),
+                ('full_generation', ct.c_uint32), ('last_activity_us', ct.c_int64)]
+
+
 def png(path: Path, frame: bytes) -> None:
     def chunk(tag, data):
         return struct.pack('>I', len(data)) + tag + data + struct.pack('>I', zlib.crc32(tag + data))
@@ -118,6 +135,35 @@ def main():
     for index, point in enumerate([(40, 110), (760, 110), (40, 390), (760, 390), (400, 250)]):
         assert lib.diagnostic_target_hit(*point) == 1 << index
     assert lib.diagnostic_target_hit(-2**31, 0) == 0
+    if args.display_touch:
+        bench = lib.touch_test_screen_render
+        bench.argtypes = [ct.POINTER(ct.c_uint8), ct.c_size_t, ct.POINTER(TouchTest)]
+        bench.restype = ct.c_bool
+        test = TouchTest(screen=grid, contacts=2, max_contacts=3, strokes=7, coverage=0x5a5a5a)
+        test.screen.details[0].value = b'X=410 Y=240 NOW=2 MAX=3'
+        test.screen.details[1].value = b'HIT=5/5 CELL=12/24 STROKES=7'
+        test.points[0] = Point(410,240,12,1)
+        test.points[1] = Point(555,280,14,2)
+        for i in range(40):
+            test.trace[i] = Trace(100+i*10,150+(i%10)*8,1)
+        test.trace_count = test.trace_next = 40
+        def bench_render(t):
+            guarded = (ct.c_uint8 * (FRAME_BYTES + 32))(*([0xa5] * (FRAME_BYTES + 32)))
+            pixels = ct.cast(ct.byref(guarded,16),ct.POINTER(ct.c_uint8))
+            assert bench(pixels,FRAME_BYTES,ct.byref(t))
+            assert bytes(guarded[:16]) == bytes(guarded[-16:]) == b'\xa5'*16
+            return bytes(guarded[16:-16])
+        pixels = bench_render(test)
+        png(args.output / 'touch-bench-preview.png',pixels)
+        test.screen.inverted = 1
+        assert bench_render(test) == bytes(v ^ 255 for v in pixels)
+        test.screen.inverted = 0
+        test.screen.page = 2
+        assert bench_render(test) == b'\x00'*FRAME_BYTES
+        test.screen.page = 3
+        assert bench_render(test) == b'\xff'*FRAME_BYTES
+        test.trace_count = 129
+        assert not bench((ct.c_uint8*FRAME_BYTES)(),FRAME_BYTES,ct.byref(test))
     print('PASS: actual C renderer, guarded buffers, fills, inversion, 64 corner mappings and five touch targets.')
     print('Previews:', args.output.resolve())
 

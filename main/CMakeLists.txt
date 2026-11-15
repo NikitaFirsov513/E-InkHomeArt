@@ -1,5 +1,5 @@
 if(CONFIG_APP_DISPLAY_TOUCH_TEST)
-    set(app_sources "display_touch_main.c" "diagnostic_screen.c" "heartbeat.c")
+    set(app_sources "display_touch_main.c" "diagnostic_screen.c" "touch_test.c" "heartbeat.c")
 elseif(CONFIG_APP_LED_TEST)
     set(app_sources "led_test_main.c" "heartbeat.c")
 else()

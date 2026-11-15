@@ -159,9 +159,18 @@ esp_err_t gt911_delete(gt911_handle_t dev)
 esp_err_t gt911_read(gt911_handle_t dev,
                     esp_lcd_touch_point_data_t points[GT911_MAX_POINTS], uint8_t *count)
 {
+    bool fresh;
+    return gt911_read_frame(dev,points,count,&fresh);
+}
+
+esp_err_t gt911_read_frame(gt911_handle_t dev,
+                          esp_lcd_touch_point_data_t points[GT911_MAX_POINTS],
+                          uint8_t *count, bool *fresh)
+{
+    if (fresh) *fresh = false;
     if (!count) return ESP_ERR_INVALID_ARG;
     *count = 0;
-    if (!dev || !points) return ESP_ERR_INVALID_ARG;
+    if (!dev || !points || !fresh) return ESP_ERR_INVALID_ARG;
     if (dev->sleeping) return ESP_ERR_INVALID_STATE;
     memset(points, 0, GT911_MAX_POINTS * sizeof(*points));
     /* Upstream retains its cached points when no new frame is ready. Check
@@ -171,6 +180,7 @@ esp_err_t gt911_read(gt911_handle_t dev,
     if (err != ESP_OK || !(status & 0x80)) return err;
     err = esp_lcd_touch_read_data(dev->touch);
     if (err != ESP_OK) return err;
+    if ((status & 0x0f) > GT911_MAX_POINTS) return ESP_ERR_INVALID_RESPONSE;
     err = esp_lcd_touch_get_data(dev->touch, points, count, GT911_MAX_POINTS);
     if (err != ESP_OK) { *count = 0; return err; }
     for (uint8_t i = 0; i < *count; ++i) {
@@ -179,6 +189,7 @@ esp_err_t gt911_read(gt911_handle_t dev,
             return ESP_ERR_INVALID_RESPONSE;
         }
     }
+    *fresh = true;
     return ESP_OK;
 }
 
