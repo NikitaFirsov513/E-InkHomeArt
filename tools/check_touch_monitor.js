@@ -33,6 +33,11 @@ assert(nodes.get('panel-mode').textContent.includes('180'));
 line('I DISPLAY_TEST: EPD PERF PARTIAL bytes=800 render=2ms power=12ms spi=1ms busy=305ms off=8ms total=326ms');
 assert.equal(run('lastPanelPerformance.bytes'),800);assert.equal(run('lastPanelPerformance.busy'),305);
 assert(nodes.get('panel-perf').textContent.includes('326'));
+assert.equal(run('lastPanelPerformance.age'),null); // Older firmware remains readable.
+line('I DISPLAY_TEST: EPD PERF PARTIAL bytes=400 render=3ms power=0ms spi=1ms busy=380ms off=0ms total=381ms age=42ms');
+assert.equal(run('lastPanelPerformance.age'),42);
+assert.equal(run('lastPanelPerformance.total'),381);
+assert(nodes.get('panel-perf').textContent.includes('42'));
 line('I DISPLAY_TEST: TEST_RESET map=2');assert.equal(run('state.map'),2);assert.equal(run('paths.length'),0);assert.equal(run('records.length'),0);
 line(frame(1,'1:50:100:10',2));assert.equal(run('state.points[0].x'),50);
 line(frame(1,'1:75:125:10',4));assert.equal(run('state.map'),4);assert.equal(run('paths.length'),0);

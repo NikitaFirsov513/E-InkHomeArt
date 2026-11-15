@@ -36,6 +36,7 @@ def main():
     parser.add_argument('--compiler', type=Path)
     parser.add_argument('--linker', type=Path)
     parser.add_argument('--build', type=Path, default=ROOT / 'build/host-review')
+    parser.add_argument('--optimization', choices=['O0', 'O2'], default='O0')
     args = parser.parse_args()
     compiler = args.compiler or find_clang()
     build = args.build.resolve()
@@ -44,6 +45,7 @@ def main():
         'tests/host/driver_regression.c', 'components/uc8179/uc8179.c',
         'components/gt911/gt911.c', 'components/lis2dw12/lis2dw12_idf.c',
         'components/lis2dw12/vendor/lis2dw12_reg.c', 'main/diagnostic_screen.c', 'main/touch_test.c',
+        'main/frame_pipeline.c',
     ]
     includes = ['tests/host/stubs', 'components/uc8179/include', 'components/gt911/include',
                 'components/lis2dw12/include', 'components/lis2dw12/vendor', 'main']
@@ -51,7 +53,7 @@ def main():
     for index, source in enumerate(sources):
         obj = build / f'{index}.obj'
         cmd = [str(compiler), '-std=c11', '-ffreestanding', '-fno-builtin', '-fno-stack-protector',
-               '-O0', '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter']
+               '-'+args.optimization, '-Wall', '-Wextra', '-Werror', '-Wno-unused-parameter']
         if os.name != 'nt':
             cmd += ['-fPIC']
         cmd += [f'-I{ROOT / include}' for include in includes]

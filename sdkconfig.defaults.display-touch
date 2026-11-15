@@ -1,5 +1,8 @@
 # Overlay after sdkconfig.defaults; UART-based display/touch assembly test.
 CONFIG_APP_DISPLAY_TOUCH_TEST=y
+# Standard S3 CPU frequency; optimize software without changing panel waveforms.
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
 CONFIG_DISPLAY_TOUCH_PARTIAL_TEST=y
 CONFIG_DISPLAY_TOUCH_SPI_MHZ=8
 CONFIG_DISPLAY_TOUCH_TARGET_MS=350

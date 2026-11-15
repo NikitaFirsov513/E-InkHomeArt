@@ -247,7 +247,7 @@ bool touch_test_screen_render(uint8_t *f, size_t length, const touch_test_t *t)
     }
     if (s.page == DIAG_GRID || s.page == DIAG_STATUS) {
         rect(f,550,39,240,12,true);
-        text(f,550,39,"TOUCH BENCH / V5",20,1,false);
+        text(f,550,39,"TOUCH BENCH / V6",20,1,false);
         rect(f,0,430,800,50,false);
         const char *labels[] = {"SNAPSHOT", "CLEAR", "NEXT PAGE"};
         for (unsigned i = 0; i < 3; ++i) {

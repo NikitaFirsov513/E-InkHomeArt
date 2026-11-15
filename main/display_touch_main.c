@@ -10,6 +10,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/task.h"
+#include "frame_pipeline.h"
 #include "gt911.h"
 #include "heartbeat.h"
 #include "touch_test.h"
@@ -29,6 +30,11 @@
 #endif
 #define EPD_POWER_IDLE_US INT64_C(200000)
 #define EPD_POWER_BURST_PARTIALS 5U
+#if CONFIG_COMPILER_OPTIMIZATION_PERF
+#define DISPLAY_OPTIMIZATION "O2"
+#else
+#define DISPLAY_OPTIMIZATION "custom optimization"
+#endif
 #if !CONFIG_ESP_CONSOLE_UART_DEFAULT
 #error "Display/touch test requires the default UART0 console on TX43/RX44."
 #endif
@@ -46,6 +52,16 @@ static const bool partial_bench = true;
 static const bool partial_bench = false;
 #endif
 static QueueHandle_t frame_queue, result_queue;
+typedef struct {
+    touch_test_t model;
+    int64_t render_us, rendered_at;
+    esp_err_t error;
+    uint8_t pixels[DIAG_FRAME_BYTES];
+} prepared_frame_t;
+static prepared_frame_t *prepared_frames[FRAME_PIPELINE_SLOTS];
+static frame_pipeline_t pipeline;
+static portMUX_TYPE frame_lock = portMUX_INITIALIZER_UNLOCKED;
+static TaskHandle_t display_task_handle;
 static gt911_handle_t touch;
 static uint16_t native_width, native_height, raw_x, raw_y;
 static esp_err_t gpio_error, i2c_error = ESP_ERR_NOT_FOUND;
@@ -166,10 +182,60 @@ static void request_snapshot(void)
     } else ESP_LOGE(TAG,"Display task unavailable; touch and UART remain active");
 }
 
+/* Only ownership indices are shared under this lock. The renderer exclusively
+ * writes FRAME_RENDERING; the SPI task exclusively reads FRAME_DISPLAY. */
+static bool receive_prepared(prepared_frame_t **current, TickType_t wait)
+{
+    portENTER_CRITICAL(&frame_lock);
+    int slot = frame_pipeline_take_latest(&pipeline);
+    portEXIT_CRITICAL(&frame_lock);
+    if (slot < 0 && wait) {
+        ulTaskNotifyTake(pdTRUE,wait);
+        portENTER_CRITICAL(&frame_lock);
+        slot = frame_pipeline_take_latest(&pipeline);
+        portEXIT_CRITICAL(&frame_lock);
+    }
+    if (slot < 0) return false;
+    *current = prepared_frames[slot];
+    return true;
+}
+
+static void render_task(void *arg)
+{
+    (void)arg;
+    touch_test_t model;
+    while (xQueueReceive(frame_queue,&model,portMAX_DELAY) == pdTRUE) {
+        while (xQueueReceive(frame_queue,&model,0) == pdTRUE) {}
+        portENTER_CRITICAL(&frame_lock);
+        int slot = frame_pipeline_begin_render(&pipeline);
+        portEXIT_CRITICAL(&frame_lock);
+        if (slot < 0) {
+            ESP_LOGE(TAG,"Frame ownership error; renderer stopped");
+            break;
+        }
+        prepared_frame_t *ready = prepared_frames[slot];
+        ready->model = model;
+        int64_t start = esp_timer_get_time();
+        ready->error = touch_test_screen_render(ready->pixels,DIAG_FRAME_BYTES,&ready->model) ?
+            ESP_OK : ESP_ERR_INVALID_ARG;
+        ready->rendered_at = esp_timer_get_time();
+        ready->render_us = ready->rendered_at-start;
+        portENTER_CRITICAL(&frame_lock);
+        bool published = frame_pipeline_publish(&pipeline,slot);
+        portEXIT_CRITICAL(&frame_lock);
+        if (!published) {
+            ESP_LOGE(TAG,"Frame publication error; renderer stopped");
+            break;
+        }
+        xTaskNotifyGive(display_task_handle);
+    }
+    vTaskDelete(NULL);
+}
+
 static void display_task(void *arg)
 {
     (void)arg;
-    uint8_t *frame = NULL, *shown_frame = NULL;
+    uint8_t *shown_frame = NULL;
     uc8179_handle_t panel = NULL;
     bool spi_ready = false;
     int64_t finished_at = 0, started_at = 0;
@@ -177,12 +243,12 @@ static void display_task(void *arg)
     unsigned partial_since_full = 0, power_burst_partials = 0;
     uint32_t completed_generation = 0;
     bool baseline = false, have_visible = false, power_active = false, cleanup_wait_logged = false;
-    touch_test_t pending = {0};
+    prepared_frame_t *prepared = NULL;
     for (;;) {
         bool cleanup_due = partial_bench && baseline &&
             partial_since_full >= CONFIG_DISPLAY_TOUCH_PARTIALS_BEFORE_CLEAN;
-        bool received = xQueueReceive(frame_queue,&pending,
-            power_active || cleanup_due ? pdMS_TO_TICKS(50)+1 : portMAX_DELAY) == pdTRUE;
+        bool received = receive_prepared(&prepared,
+            power_active || cleanup_due ? pdMS_TO_TICKS(50)+1 : portMAX_DELAY);
         esp_err_t err = gpio_error;
         if (power_active && esp_timer_get_time()-finished_at >= EPD_POWER_IDLE_US) {
             err = uc8179_power_off(panel);
@@ -197,10 +263,15 @@ static void display_task(void *arg)
             int64_t left = deadline-esp_timer_get_time();
             if (left <= 0) break;
             TickType_t ticks = pdMS_TO_TICKS((left+999)/1000);
-            xQueueReceive(frame_queue,&pending,ticks ? ticks : 1);
+            receive_prepared(&prepared,ticks ? ticks : 1);
         }
-        while (xQueueReceive(frame_queue,&pending,0) == pdTRUE) {}
-        touch_refresh_t mode = partial_bench ? touch_test_refresh_policy(&pending,baseline,
+        while (receive_prepared(&prepared,0)) {}
+        if (!prepared) continue;
+        const touch_test_t *pending = &prepared->model;
+        const uint8_t *frame = prepared->pixels;
+        const int64_t render_us = prepared->render_us;
+        if (err == ESP_OK) err = prepared->error;
+        touch_refresh_t mode = partial_bench ? touch_test_refresh_policy(pending,baseline,
             partial_since_full,CONFIG_DISPLAY_TOUCH_PARTIALS_BEFORE_CLEAN,
             completed_generation,esp_timer_get_time()) : TOUCH_REFRESH_FULL;
         if (err == ESP_OK && mode == TOUCH_REFRESH_WAIT) {
@@ -214,10 +285,6 @@ static void display_task(void *arg)
                 report("EPD cleanup wait power off",err);
             }
             if (err == ESP_OK) continue;
-        }
-        if (err == ESP_OK && !frame) {
-            frame = heap_caps_malloc(DIAG_FRAME_BYTES,MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-            if (!frame) err = ESP_ERR_NO_MEM;
         }
         if (err == ESP_OK && partial_bench && !shown_frame) {
             shown_frame = heap_caps_malloc(DIAG_FRAME_BYTES,MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -238,21 +305,17 @@ static void display_task(void *arg)
             err = uc8179_new(&config,&panel);
             report("EPD SPI device",err);
         }
-        int64_t render_start = esp_timer_get_time();
-        if (err == ESP_OK && !touch_test_screen_render(frame,DIAG_FRAME_BYTES,&pending))
-            err = ESP_ERR_INVALID_ARG;
-        int64_t render_us = esp_timer_get_time()-render_start;
         touch_test_region_t region = {0,0,DIAG_WIDTH,DIAG_HEIGHT};
         if (err == ESP_OK && mode == TOUCH_REFRESH_PARTIAL && have_visible &&
             !touch_test_changed_region(shown_frame,frame,DIAG_FRAME_BYTES,&region)) {
-            if (power_active && !pending.contacts) {
+            if (power_active && !pending->contacts) {
                 err = uc8179_power_off(panel);
                 power_active = false;
                 power_burst_partials = 0;
                 report("EPD release power off",err);
             }
             if (err == ESP_OK) {
-                shown_page = pending.screen.page;
+                shown_page = pending->screen.page;
                 const frame_result_t unchanged = { .error = ESP_OK, .completed = completed, .page = shown_page,
                     .full_updates = full_updates, .partial_updates = partial_updates };
                 xQueueOverwrite(result_queue,&unchanged);
@@ -262,10 +325,11 @@ static void display_task(void *arg)
         }
         bool use_partial = mode == TOUCH_REFRESH_PARTIAL;
         started_at = esp_timer_get_time();
+        int64_t age_us = started_at-prepared->rendered_at;
         if (err == ESP_OK && !use_partial) {
             cleanup_wait_logged = false;
             ESP_LOGI(TAG,"EPD FULL reason=%s partials=%u limit=%u",
-                !baseline ? "baseline" : pending.full_generation != completed_generation ? "manual" : "idle-clean",
+                !baseline ? "baseline" : pending->full_generation != completed_generation ? "manual" : "idle-clean",
                 partial_since_full,(unsigned)CONFIG_DISPLAY_TOUCH_PARTIALS_BEFORE_CLEAN);
             ESP_LOGI(TAG,"EPD init: RESET14 BUSY13 (level=%d)",gpio_get_level(BOARD_PIN_EPD_BUSY));
             err = uc8179_init(panel);
@@ -287,12 +351,12 @@ static void display_task(void *arg)
             power_active = true;
             ++completed;
             if (use_partial) { ++partial_updates; ++partial_since_full; ++power_burst_partials; }
-            else { ++full_updates; completed_generation = pending.full_generation; power_burst_partials = 0; }
-            shown_page = pending.screen.page;
+            else { ++full_updates; completed_generation = pending->full_generation; power_burst_partials = 0; }
+            shown_page = pending->screen.page;
             if (shown_frame) memcpy(shown_frame,frame,DIAG_FRAME_BYTES);
             have_visible = true;
-            ESP_LOGI(TAG,"EPD TX OK: %s. Check the physical image.",page_names[pending.screen.page]);
-            bool hold_power = partial_bench && use_partial && pending.contacts &&
+            ESP_LOGI(TAG,"EPD TX OK: %s. Check the physical image.",page_names[pending->screen.page]);
+            bool hold_power = partial_bench && use_partial && pending->contacts &&
                 power_burst_partials < EPD_POWER_BURST_PARTIALS &&
                 partial_since_full < CONFIG_DISPLAY_TOUCH_PARTIALS_BEFORE_CLEAN;
             if (!hold_power) {
@@ -304,10 +368,10 @@ static void display_task(void *arg)
             uc8179_update_stats_t timing;
             if (uc8179_get_update_stats(panel,&timing) == ESP_OK)
                 ESP_LOGI(TAG,"EPD PERF %s bytes=%"PRIu32" render=%"PRId64"ms power=%"PRId64
-                    "ms spi=%"PRId64"ms busy=%"PRId64"ms off=%"PRId64"ms total=%"PRId64"ms",
+                    "ms spi=%"PRId64"ms busy=%"PRId64"ms off=%"PRId64"ms total=%"PRId64"ms age=%"PRId64"ms",
                     use_partial ? "PARTIAL" : "FULL",timing.bytes,render_us/1000,timing.power_on_us/1000,
                     timing.transfer_us/1000,timing.refresh_us/1000,timing.power_off_us/1000,
-                    (esp_timer_get_time()-started_at)/1000);
+                    (esp_timer_get_time()-started_at)/1000,age_us/1000);
         }
         if (err != ESP_OK) {
             report("EPD transfer/sleep",err);
@@ -462,18 +526,32 @@ void app_main(void)
     setup_touch();
     frame_queue = xQueueCreate(1,sizeof(test));
     result_queue = xQueueCreate(1,sizeof(frame_result_t));
-    if (!frame_queue || !result_queue || xTaskCreate(display_task,"display_test",6144,NULL,1,NULL) != pdPASS) {
-        ESP_LOGE(TAG,"Display task/queue allocation failed");
+    bool ready = frame_queue && result_queue;
+    for (unsigned i = 0; i < FRAME_PIPELINE_SLOTS; ++i) {
+        prepared_frames[i] = heap_caps_malloc(sizeof(prepared_frame_t),MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        if (!prepared_frames[i]) ready = false;
+    }
+    if (ready) ready = xTaskCreate(display_task,"display_test",6144,NULL,1,&display_task_handle) == pdPASS;
+    if (ready) ready = xTaskCreate(render_task,"frame_render",6144,NULL,1,NULL) == pdPASS;
+    if (!ready) {
+        ESP_LOGE(TAG,"Display pipeline allocation failed; UART/touch/heartbeat remain active");
+        if (display_task_handle) { vTaskDelete(display_task_handle); display_task_handle = NULL; }
         if (frame_queue) vQueueDelete(frame_queue);
         if (result_queue) vQueueDelete(result_queue);
         frame_queue = result_queue = NULL;
+        for (unsigned i = 0; i < FRAME_PIPELINE_SLOTS; ++i) {
+            heap_caps_free(prepared_frames[i]);
+            prepared_frames[i] = NULL;
+        }
         last_result.error = ESP_ERR_NO_MEM;
     }
     request_snapshot();
-    ESP_LOGI(TAG,"DISPLAY TOUCH TEST READY: V5 / UART0 115200 / D6 / SPI %u MHz / %s / clean limit %u",
+    ESP_LOGI(TAG,"DISPLAY TOUCH TEST READY: V6 / UART0 115200 / D6 / SPI %u MHz / %s / clean limit %u",
              (unsigned)CONFIG_DISPLAY_TOUCH_SPI_MHZ,
              partial_bench ? "OTP partial / idle cleanup" : "full only / 180s minimum",
              (unsigned)CONFIG_DISPLAY_TOUCH_PARTIALS_BEFORE_CLEAN);
+    ESP_LOGI(TAG,"FRAME PIPELINE: 2 prepared buffers / CPU %u MHz / %s / %s",
+             (unsigned)CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ,DISPLAY_OPTIMIZATION,ready ? "READY" : "UNAVAILABLE");
     help();
     boot_button_t boot = {0};
     unsigned line_length = 0;

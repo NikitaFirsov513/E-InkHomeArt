@@ -17,7 +17,7 @@
 <div class="bar" id="commands"><button data-command="r">Снимок E-Ink</button><button data-command="f">Полная очистка E-Ink</button><button data-command="g">Сетка</button><button data-command="c">Очистить след</button><button data-command="n">Заливки / страницы</button><button data-command="t">Ориентация тача</button><button data-command="i">Инверсия</button><button data-command="a">Автоснимок вкл/выкл</button><button data-command="s">Статистика</button></div>
 <p id="panel-mode" class="note">Режим панели ещё не получен. Нажми «Статистика».</p>
 <p id="panel-perf" class="note">Измерения E-Ink появятся после следующего обновления.</p>
-<p class="note">V5: SPI 8 МГц, целевой интервал — 350 мс, фактический темп ограничен BUSY. Короткие серии сохраняют питание между кадрами. Тестовый лимит 30 partial экспериментальный: возможен остаточный след, производитель рекомендует пять. На лимите экран ждёт отпускания и паузы 1,2 с, затем очищается. «Полная очистка E-Ink» запускает её вручную. Full-only сохраняет паузу 180 с. Размер касания GT911 — условное значение, не измерение силы нажатия.</p>
+<p class="note">V6: CPU 240 МГц, оптимизация O2, следующий кадр готовится во время BUSY. SPI 8 МГц, целевой интервал — 350 мс, фактический темп ограничен BUSY. Короткие серии сохраняют питание между кадрами. Тестовый лимит 30 partial экспериментальный: возможен остаточный след, производитель рекомендует пять. На лимите экран ждёт отпускания и паузы 1,2 с, затем очищается. «Полная очистка E-Ink» запускает её вручную. Full-only сохраняет паузу 180 с. Размер касания GT911 — условное значение, не измерение силы нажатия.</p>
 <pre id="log" aria-label="Журнал UART"></pre>
 </main>
 <script>
@@ -47,8 +47,8 @@ function receive(line){
  let resetMatch=line.match(/TEST_RESET map=(\d+)/);if(resetMatch){reset(Number(resetMatch[1]));return;}
  let result=line.match(/RESULT .*?errors=(\d+)/);if(result){state.errors=Number(result[1]);draw();}
  let mode=line.match(/mode=(partial-bench|full-only)/);if(mode)$('panel-mode').textContent=mode[1]==='partial-bench'?'Панель: интерактивный OTP partial bench. Скорость смотри в EPD PERF.':'Панель: full-only / пауза 180 с.';
- let perf=line.match(/EPD PERF (PARTIAL|FULL) bytes=(\d+) render=(\d+)ms power=(\d+)ms spi=(\d+)ms busy=(\d+)ms off=(\d+)ms total=(\d+)ms/);
- if(perf){const [bytes,render,power,spi,busy,off,total]=perf.slice(2).map(Number);lastPanelPerformance={time:new Date().toISOString(),mode:perf[1],bytes,render,power,spi,busy,off,total};$('panel-perf').textContent=`${perf[1]}: ${bytes} байт · рендер ${render} мс · включение ${power} мс · SPI ${spi} мс · BUSY ${busy} мс · выключение ${off} мс · обновление ${total} мс.`;}
+ let perf=line.match(/EPD PERF (PARTIAL|FULL) bytes=(\d+) render=(\d+)ms power=(\d+)ms spi=(\d+)ms busy=(\d+)ms off=(\d+)ms total=(\d+)ms(?: age=(\d+)ms)?/);
+ if(perf){const [bytes,render,power,spi,busy,off,total]=perf.slice(2,9).map(Number);const age=perf[9]===undefined?null:Number(perf[9]);lastPanelPerformance={time:new Date().toISOString(),mode:perf[1],bytes,render,power,spi,busy,off,total,age};$('panel-perf').textContent=`${perf[1]}: ${bytes} байт · рендер ${render} мс · включение ${power} мс · SPI ${spi} мс · BUSY ${busy} мс · выключение ${off} мс · обновление ${total} мс.${age===null?'':` Возраст готового кадра: ${age} мс.`}`;}
  let m=line.match(/TOUCH2 count=(\d+) map=(\d+) targets=(\d+) cells=(\d+) strokes=(\d+) max=(\d+) points=([^ ]*) raw=(\d+),(\d+)/);if(!m)return;
  const [count,map,targets,cells,strokes,max]=m.slice(1,7).map(Number);
  const points=m[7]?m[7].split(',').map(p=>{const[id,x,y,size]=p.split(':').map(Number);return{id,x,y,size}}):[];

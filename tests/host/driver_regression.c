@@ -5,6 +5,7 @@
 #include "gt911.h"
 #include "lis2dw12_idf.h"
 #include "touch_test.h"
+#include "frame_pipeline.h"
 
 /* No CRT or device is required by the test DLL. Only the SDK boundary is
  * simulated; uc8179.c, gt911.c, lis2dw12_idf.c and the ST driver are real code. */
@@ -439,6 +440,76 @@ static int test_epd_partial_region(void)
     return 0;
 }
 
+/* Enumerate producer/consumer scheduling at each ownership boundary. The real
+ * application serializes these boundaries with one portMUX; pixel work happens
+ * outside that lock and may span many consumer/producer turns. */
+static int walk_frame_pipeline(frame_pipeline_t p, unsigned depth)
+{
+    unsigned display = 0, rendering = 0, ready = 0;
+    int active = -1, writer = -1;
+    for (unsigned i = 0; i < FRAME_PIPELINE_SLOTS; ++i) {
+        CHECK(p.state[i] >= FRAME_FREE && p.state[i] <= FRAME_DISPLAY);
+        if (p.state[i] == FRAME_DISPLAY) { ++display; active = (int)i; }
+        if (p.state[i] == FRAME_RENDERING) { ++rendering; writer = (int)i; }
+        if (p.state[i] == FRAME_READY) ++ready;
+    }
+    CHECK(display <= 1 && rendering <= 1 && ready <= 1);
+    if (!depth) return 0;
+    frame_pipeline_t q = p;
+    int slot = frame_pipeline_begin_render(&q);
+    CHECK(slot != active || slot < 0);
+    if (writer >= 0) CHECK(slot < 0 && memcmp(&p,&q,sizeof(p)) == 0);
+    else {
+        CHECK(slot >= 0 && q.state[slot] == FRAME_RENDERING);
+        int line = walk_frame_pipeline(q,depth-1); if (line) return line;
+    }
+    q = p;
+    if (writer >= 0) {
+        CHECK(frame_pipeline_publish(&q,writer));
+        if (active >= 0) CHECK(q.state[active] == FRAME_DISPLAY);
+        int line = walk_frame_pipeline(q,depth-1); if (line) return line;
+    }
+    q = p;
+    slot = frame_pipeline_take_latest(&q);
+    if (!ready) CHECK(slot < 0 && memcmp(&p,&q,sizeof(p)) == 0);
+    else {
+        CHECK(slot >= 0 && p.state[slot] == FRAME_READY && q.state[slot] == FRAME_DISPLAY);
+        if (writer >= 0) CHECK(q.state[writer] == FRAME_RENDERING);
+        int line = walk_frame_pipeline(q,depth-1); if (line) return line;
+    }
+    return 0;
+}
+
+static int test_frame_pipeline(void)
+{
+    frame_pipeline_t p = {0};
+    CHECK(frame_pipeline_begin_render(NULL) == -1 && frame_pipeline_take_latest(NULL) == -1);
+    CHECK(!frame_pipeline_publish(NULL,0) && !frame_pipeline_publish(&p,-1));
+    CHECK(!frame_pipeline_publish(&p,FRAME_PIPELINE_SLOTS) && !frame_pipeline_publish(&p,0));
+    CHECK(frame_pipeline_take_latest(&p) == -1);
+    unsigned pixels[FRAME_PIPELINE_SLOTS] = {0};
+    int first = frame_pipeline_begin_render(&p);
+    CHECK(first >= 0 && frame_pipeline_take_latest(&p) == -1);
+    pixels[first] = 11;
+    CHECK(frame_pipeline_publish(&p,first));
+    CHECK(!frame_pipeline_publish(&p,first));
+    CHECK(frame_pipeline_take_latest(&p) == first);
+    /* Display stays BUSY on frame 11 while ten newer frames are rendered. */
+    for (unsigned value = 12; value <= 21; ++value) {
+        int next = frame_pipeline_begin_render(&p);
+        CHECK(next >= 0 && next != first && frame_pipeline_begin_render(&p) == -1);
+        CHECK(frame_pipeline_take_latest(&p) == -1);
+        pixels[next] = value;
+        CHECK(frame_pipeline_publish(&p,next) && pixels[first] == 11);
+    }
+    int latest = frame_pipeline_take_latest(&p);
+    CHECK(latest >= 0 && latest != first && pixels[latest] == 21);
+    CHECK(p.state[first] == FRAME_FREE);
+    CHECK(frame_pipeline_begin_render(&p) == first && pixels[latest] == 21);
+    frame_pipeline_t empty = {0};
+    return walk_frame_pipeline(empty,12);
+}
+
 static int test_cleanup_policy(void)
 {
     touch_test_t t = { .contacts = 1, .last_activity_us = 1000000 };
@@ -556,6 +627,7 @@ static const struct { const char *name; int (*run)(void); } cases[] = {
     {"UC8179 cropped partial stride, byte alignment, last pixel and timing",test_epd_partial_region},
     {"Changed rectangle: no-op, single byte, last row/column and full frame",test_changed_rectangle},
     {"Cleanup: partial budget, release/idle boundary, manual request and clear",test_cleanup_policy},
+    {"Frame pipeline: immutable active frame, latest replacement and interleaved ownership",test_frame_pipeline},
     {"GT911 allocation, absent device and wrong ID",test_gt_constructor_failures},
     {"GT911 explicit/automatic geometry validation",test_gt_geometry},
     {"GT911 fresh frame vs cached touch / release / I2C fault",test_gt_no_stale_touch},
