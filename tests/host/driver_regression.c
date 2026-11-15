@@ -72,17 +72,24 @@ esp_err_t gpio_intr_disable(gpio_num_t pin) { pin_interrupt[pin] = GPIO_INTR_DIS
 esp_err_t gpio_reset_pin(gpio_num_t pin) { pin_mode[pin] = 0; pin_interrupt[pin] = 0; return ESP_OK; }
 
 static bool fail_spi_add, fail_spi_remove;
+static bool spi_driver_ready;
 static unsigned spi_calls, spi_fail_at, spi_devices;
 static size_t bus_max, largest_chunk, old_size, new_size;
 static uint8_t spi_command, old_frame[UC8179_FRAME_BYTES], new_frame[UC8179_FRAME_BYTES];
 esp_err_t spi_bus_get_max_transaction_len(spi_host_device_t host, size_t *length)
-{ (void)host; *length = bus_max; return ESP_OK; }
+{
+    (void)host;
+    /* IDF 6.1 creates the SPI master context lazily on first device attach. */
+    if (!spi_driver_ready || !length) return ESP_ERR_INVALID_ARG;
+    *length = bus_max;
+    return ESP_OK;
+}
 esp_err_t spi_bus_add_device(spi_host_device_t host, const spi_device_interface_config_t *config, spi_device_handle_t *out)
 {
     (void)host;
     if (fail_spi_add) return ESP_ERR_NO_MEM;
     if (config->mode || config->spics_io_num != 47) return ESP_ERR_INVALID_ARG;
-    *out = (void *)(uintptr_t)0x123; ++spi_devices; return ESP_OK;
+    *out = (void *)(uintptr_t)0x123; ++spi_devices; spi_driver_ready = true; return ESP_OK;
 }
 esp_err_t spi_bus_remove_device(spi_device_handle_t device)
 { (void)device; if (fail_spi_remove) return ESP_ERR_INVALID_STATE; --spi_devices; return ESP_OK; }
@@ -206,6 +213,9 @@ static int test_epd_alloc_failures(void)
     allocation_fail_at = 0; fail_spi_add = true;
     CHECK(uc8179_new(&cfg,&dev) == ESP_ERR_NO_MEM);
     CHECK(allocation_count == 0 && !invalid_free);
+    fail_spi_add = false; bus_max = 0;
+    CHECK(uc8179_new(&cfg,&dev) == ESP_ERR_INVALID_ARG);
+    CHECK(!dev && allocation_count == 0 && spi_devices == 0 && !invalid_free);
     return 0;
 }
 static int test_epd_busy_timeout(void)
@@ -364,7 +374,7 @@ int host_case_run(int index)
     memset(allocated,0,sizeof(allocated)); allocation_calls = allocation_fail_at = allocation_count = 0;
     invalid_free = false; failure = NULL; clock_us = 0; busy_level = 1;
     memset(pin_level,0,sizeof(pin_level)); memset(pin_mode,0,sizeof(pin_mode)); memset(pin_interrupt,0,sizeof(pin_interrupt));
-    address_latched = 0; fail_spi_add = fail_spi_remove = false;
+    address_latched = 0; fail_spi_add = fail_spi_remove = spi_driver_ready = false;
     spi_calls = spi_fail_at = spi_devices = 0; bus_max = 4096; largest_chunk = old_size = new_size = 0;
     i2c_devices = i2c_calls = 0; fail_i2c = reset_stuck = false; memset(registers,0,sizeof(registers));
     registers[LIS2DW12_WHO_AM_I] = LIS2DW12_ID;

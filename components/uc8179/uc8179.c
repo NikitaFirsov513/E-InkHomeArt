@@ -76,16 +76,9 @@ esp_err_t uc8179_new(const uc8179_config_t *config, uc8179_handle_t *out)
             if (pins[i] == pins[j]) return ESP_ERR_INVALID_ARG;
         }
     }
-    size_t max_bytes = 0;
-    esp_err_t err = spi_bus_get_max_transaction_len(config->host, &max_bytes);
-    if (err != ESP_OK) return err;
-    if (max_bytes < 4) return ESP_ERR_INVALID_ARG;
     uc8179_handle_t dev = calloc(1, sizeof(*dev));
     if (!dev) return ESP_ERR_NO_MEM;
     dev->config = *config;
-    dev->chunk_size = (max_bytes < 4096 ? max_bytes : 4096) & ~(size_t)3;
-    dev->dma_buffer = heap_caps_malloc(dev->chunk_size, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
-    if (!dev->dma_buffer) { free(dev); return ESP_ERR_NO_MEM; }
     const spi_device_interface_config_t spi = {
         .mode = 0,
         .clock_speed_hz = config->clock_speed_hz,
@@ -93,10 +86,24 @@ esp_err_t uc8179_new(const uc8179_config_t *config, uc8179_handle_t *out)
         .flags = SPI_DEVICE_HALFDUPLEX,
         .queue_size = 1,
     };
-    err = spi_bus_add_device(config->host, &spi, &dev->spi);
-    if (err != ESP_OK) { free(dev->dma_buffer); free(dev); return err; }
+    esp_err_t err = spi_bus_add_device(config->host, &spi, &dev->spi);
+    if (err != ESP_OK) goto fail;
+    /* IDF 6.1 initializes the SPI master context lazily during device attach.
+     * Querying capacity before this returns ESP_ERR_INVALID_ARG on a new bus. */
+    size_t max_bytes = 0;
+    err = spi_bus_get_max_transaction_len(config->host, &max_bytes);
+    if (err != ESP_OK) goto fail;
+    if (max_bytes < 4) { err = ESP_ERR_INVALID_ARG; goto fail; }
+    dev->chunk_size = (max_bytes < 4096 ? max_bytes : 4096) & ~(size_t)3;
+    dev->dma_buffer = heap_caps_malloc(dev->chunk_size, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL);
+    if (!dev->dma_buffer) { err = ESP_ERR_NO_MEM; goto fail; }
     *out = dev;
     return ESP_OK;
+fail:
+    if (dev->spi) spi_bus_remove_device(dev->spi);
+    free(dev->dma_buffer);
+    free(dev);
+    return err;
 }
 
 esp_err_t uc8179_delete(uc8179_handle_t dev)

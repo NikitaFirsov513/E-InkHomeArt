@@ -161,6 +161,7 @@ static void display_task(void *arg)
         if (err == ESP_OK && !spi_ready) {
             err = spi_bus_initialize(BOARD_EPD_SPI_HOST,&board_epd_spi_bus_config,BOARD_EPD_SPI_DMA);
             spi_ready = err == ESP_OK;
+            report("EPD SPI2 bus",err);
         }
         if (err == ESP_OK && !panel) {
             const uc8179_config_t config = {
@@ -170,11 +171,19 @@ static void display_task(void *arg)
                 .busy_timeout_ms = 20000,
             };
             err = uc8179_new(&config,&panel);
+            report("EPD SPI device",err);
         }
         if (err == ESP_OK && !display_touch_screen_render(frame,DIAG_FRAME_BYTES,&pending))
             err = ESP_ERR_INVALID_ARG;
-        if (err == ESP_OK) err = uc8179_init(panel);
-        if (err == ESP_OK) err = uc8179_display_frame(panel,frame,DIAG_FRAME_BYTES);
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG,"EPD init: RESET14 BUSY13 (level=%d)",gpio_get_level(BOARD_PIN_EPD_BUSY));
+            err = uc8179_init(panel);
+            report("EPD init",err);
+        }
+        if (err == ESP_OK) {
+            ESP_LOGI(TAG,"EPD frame: 48000 bytes, waiting for full refresh");
+            err = uc8179_display_frame(panel,frame,DIAG_FRAME_BYTES);
+        }
         if (err == ESP_OK) {
             ++completed;
             ESP_LOGI(TAG,"EPD TX OK: %s. Check the physical image.",page_names[pending.page]);
