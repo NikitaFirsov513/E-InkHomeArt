@@ -37,6 +37,7 @@ sdkconfig.led-test
 sdkconfig.diagnostics
 sdkconfig.display-touch
 sdkconfig.art-gray
+sdkconfig.art
 
 # ESP-IDF dependencies
 # For older versions or manual component management

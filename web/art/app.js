@@ -5,6 +5,8 @@
   source.width=api.WIDTH;source.height=api.HEIGHT;
   const sourceCtx=source.getContext('2d',{willReadFrequently:true});
   let image=null,pixels=null,filename='',loadToken=0,scheduled=false;
+  window.ArtPrepared=Object.freeze({ready:()=>!!pixels,encode:()=>pixels?api.encode(pixels):null});
+  function preparedChanged(){if(window.ArtUpload)window.ArtUpload.prepared();}
   function status(message,error=false){$('status').textContent=message;$('status').style.color=error?'#9d2424':'';}
   function update(){
     scheduled=false;
@@ -19,7 +21,8 @@
       $('empty').hidden=true;$('export').disabled=$('png').disabled=false;
       $('x').disabled=$('y').disabled=fit!=='cover';
       status('Готово · 800 × 480 · 4 уровня серого · 96 000 байт изображения');
-    }catch(error){pixels=null;$('export').disabled=$('png').disabled=true;status('Не удалось подготовить картину: '+error.message,true);}
+      preparedChanged();
+    }catch(error){pixels=null;$('export').disabled=$('png').disabled=true;preparedChanged();status('Не удалось подготовить картину: '+error.message,true);}
   }
   function schedule(){if(!scheduled){scheduled=true;requestAnimationFrame(update);}}
   for(const id of ['x','y','brightness','contrast'])$(id).addEventListener('input',()=>{$(id+'-value').value=$(id).value;schedule();});
@@ -30,6 +33,7 @@
     const file=$('file').files[0],token=++loadToken;
     if(!file)return;
     image=null;pixels=null;$('adjustments').disabled=true;$('export').disabled=$('png').disabled=true;
+    preparedChanged();
     status('Открываем изображение…');
     let url;
     try{

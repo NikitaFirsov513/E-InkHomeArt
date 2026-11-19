@@ -1,6 +1,15 @@
 menu "E-InkHomeArt"
+    config APP_ART
+        bool "Art application: persistent picture and browser upload"
+        default n
+        help
+            SoftAP and local image preparation/upload page, dedicated art
+            partition, power-loss-safe storage, factory OTP four-gray display.
+            Use sdkconfig.defaults.art and partitions.art.csv.
+
     config APP_ART_GRAY_TEST
         bool "Art four-gray panel verification"
+        depends on !APP_ART
         default n
         help
             Separate stage-2 profile: factory OTP four-gray waveform, one
@@ -9,7 +18,7 @@ menu "E-InkHomeArt"
 
     config APP_DISPLAY_TOUCH_TEST
         bool "Display and touch assembly test"
-        depends on !APP_ART_GRAY_TEST
+        depends on !APP_ART_GRAY_TEST && !APP_ART
         default n
         help
             UC8179 screen, GT911 touch, UART0 and a timer-driven D6 heartbeat.
@@ -19,7 +28,7 @@ menu "E-InkHomeArt"
     config APP_LED_TEST
         bool "LED-only first assembly test"
         default y
-        depends on !APP_DISPLAY_TOUCH_TEST && !APP_ART_GRAY_TEST
+        depends on !APP_DISPLAY_TOUCH_TEST && !APP_ART_GRAY_TEST && !APP_ART
         help
             Blink D6 on GPIO6 using a periodic timer (500 ms on / 500 ms off).
             No panel, touch,

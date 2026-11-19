@@ -2,10 +2,10 @@
   "configurations": [
     {
       "name": "ESP-IDF",
-      "compileCommands": "${workspaceFolder}/build/art-gray/compile_commands.json",
+      "compileCommands": "d:\\PROJECTS\\ESP\\E-InkHomeArt\\build\\art\\compile_commands.json",
       "includePath": [
         "${workspaceFolder}/main",
-        "${workspaceFolder}/build/art-gray/config",
+        "${workspaceFolder}/build/art/config",
         "D:/esp/v6.1/esp-idf/components/esp_libc/platform_include",
         "D:/esp/v6.1/esp-idf/components/freertos/config/include",
         "D:/esp/v6.1/esp-idf/components/freertos/config/include/freertos",
@@ -64,6 +64,14 @@
         "D:/esp/v6.1/esp-idf/components/esp_hal_ana_conv/esp32s3/include",
         "D:/esp/v6.1/esp-idf/components/esp_hal_dma/include",
         "D:/esp/v6.1/esp-idf/components/esp_hal_dma/esp32s3/include",
+        "D:/esp/v6.1/esp-idf/components/lwip/include",
+        "D:/esp/v6.1/esp-idf/components/lwip/include/apps",
+        "D:/esp/v6.1/esp-idf/components/lwip/lwip/src/include",
+        "D:/esp/v6.1/esp-idf/components/lwip/port/include",
+        "D:/esp/v6.1/esp-idf/components/lwip/port/freertos/include",
+        "D:/esp/v6.1/esp-idf/components/lwip/port/esp32xx/include",
+        "D:/esp/v6.1/esp-idf/components/lwip/port/esp32xx/include/arch",
+        "D:/esp/v6.1/esp-idf/components/lwip/port/esp32xx/include/sys",
         "D:/esp/v6.1/esp-idf/components/esp_driver_gpio/include",
         "D:/esp/v6.1/esp-idf/components/spi_flash/include",
         "D:/esp/v6.1/esp-idf/components/esp_hal_mspi/include",
@@ -84,6 +92,7 @@
         "D:/esp/v6.1/esp-idf/components/esp_hal_i2c/esp32s3/include",
         "D:/esp/v6.1/esp-idf/components/esp_hal_i2c/include",
         "D:/esp/v6.1/esp-idf/components/esp_driver_uart/include",
+        "D:/esp/v6.1/esp-idf/components/vfs/include",
         "D:/esp/v6.1/esp-idf/components/esp_adc/include",
         "D:/esp/v6.1/esp-idf/components/esp_adc/interface",
         "D:/esp/v6.1/esp-idf/components/esp_adc/esp32s3/include",
@@ -111,7 +120,21 @@
         "${workspaceFolder}/components/art_store/include",
         "${workspaceFolder}/components/art_frame/include",
         "D:/esp/v6.1/esp-idf/components/esp_timer/include",
-        "D:/esp/v6.1/esp-idf/components/esp_driver_usb_serial_jtag/include"
+        "D:/esp/v6.1/esp-idf/components/esp_driver_usb_serial_jtag/include",
+        "${workspaceFolder}/components/art_manager/include",
+        "D:/esp/v6.1/esp-idf/components/esp_wifi/include",
+        "D:/esp/v6.1/esp-idf/components/esp_wifi/include/local",
+        "D:/esp/v6.1/esp-idf/components/esp_wifi/wifi_apps/include",
+        "D:/esp/v6.1/esp-idf/components/esp_wifi/wifi_apps/nan_app/include",
+        "D:/esp/v6.1/esp-idf/components/esp_wifi/remote/include",
+        "D:/esp/v6.1/esp-idf/components/esp_event/include",
+        "D:/esp/v6.1/esp-idf/components/esp_phy/include",
+        "D:/esp/v6.1/esp-idf/components/esp_phy/esp32s3/include",
+        "D:/esp/v6.1/esp-idf/components/esp_netif/include",
+        "D:/esp/v6.1/esp-idf/components/nvs_flash/include",
+        "D:/esp/v6.1/esp-idf/components/esp_partition/include",
+        "D:/esp/v6.1/esp-idf/components/esp_http_server/include",
+        "D:/esp/v6.1/esp-idf/components/http_parser"
       ],
       "browse": {
         "path": [
@@ -124,7 +147,7 @@
       "compilerPath": "D:/Espressif/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc.exe",
       "compilerArgs": [
         "-mlongcalls",
-        "-specs=${workspaceFolder}/build/art-gray/specs/picolibc.specs"
+        "-specs=${workspaceFolder}/build/art/specs/picolibc.specs"
       ],
       "intelliSenseMode": "windows-gcc-x86",
       "cStandard": "gnu23",
@@ -140,7 +163,7 @@
         "_POSIX_READER_WRITER_LOCKS"
       ],
       "forcedInclude": [
-        "${workspaceFolder}/build/art-gray/config/sdkconfig.h"
+        "${workspaceFolder}/build/art/config/sdkconfig.h"
       ]
     }
   ],

@@ -6,7 +6,7 @@
       "request": "attach",
       "name": "ESP32-S3: USB JTAG (attach)",
       "cwd": "${workspaceFolder}",
-      "program": "${workspaceFolder}/build/art-gray/E-InkHomeArt.elf",
+      "program": "${workspaceFolder}/build/art/E-InkHomeArt.elf",
       "gdb": "${command:espIdf.getToolchainGdb}",
       "runOpenOCD": true
     }

@@ -52,12 +52,26 @@ esp_err_t spi_device_polling_transmit(spi_device_handle_t device, spi_transactio
 
 #define MALLOC_CAP_DMA 1
 #define MALLOC_CAP_INTERNAL 2
+#define MALLOC_CAP_8BIT 4
 void *heap_caps_malloc(size_t size, unsigned caps);
 typedef uint32_t TickType_t;
 #define pdMS_TO_TICKS(ms) ((ms) / 10U)
 void vTaskDelay(TickType_t ticks);
 int64_t esp_timer_get_time(void);
 void esp_rom_delay_us(uint32_t delay);
+
+typedef void *TaskHandle_t;
+typedef int portMUX_TYPE;
+#define portMUX_INITIALIZER_UNLOCKED 0
+#define portENTER_CRITICAL(lock) ((void)(lock))
+#define portEXIT_CRITICAL(lock) ((void)(lock))
+#define pdTRUE 1
+#define pdFALSE 0
+#define pdPASS 1
+TaskHandle_t xTaskGetCurrentTaskHandle(void);
+int xTaskCreate(void (*task)(void *),const char *,uint32_t,void *,unsigned,TaskHandle_t *);
+uint32_t ulTaskNotifyTake(int,TickType_t);
+void xTaskNotifyGive(TaskHandle_t);
 
 typedef void *i2c_master_bus_handle_t;
 typedef void *i2c_master_dev_handle_t;

@@ -19,8 +19,9 @@
 <label class="check"><input id="dither" type="checkbox" checked> Полутоновый узор для мягких переходов</label>
 <button id="reset" type="button" class="secondary">Сбросить обработку</button>
 </fieldset>
-<div class="actions"><button id="export" type="button" disabled>Сохранить кадр для проверки</button><button id="png" type="button" class="secondary" disabled>Скачать предпросмотр PNG</button></div>
-<p class="small">Первый этап разработки: подготовка и проверка кадра. Загрузка прямо на панель появится после подключения сетевого сервиса.</p>
+<div class="actions"><button id="upload" type="button" disabled>Показать на устройстве</button></div>
+<p id="device-status" class="small" role="status">Подключаемся к устройству…</p>
+<details><summary>Скачать подготовленное изображение</summary><div class="actions"><button id="export" type="button" class="secondary" disabled>Скачать готовый кадр</button><button id="png" type="button" class="secondary" disabled>Скачать предпросмотр PNG</button></div></details>
 </section>
 <section class="result" aria-label="Предпросмотр на электронных чернилах">
 <div class="preview"><canvas id="preview" width="800" height="480" aria-label="Предпросмотр изображения в четырёх уровнях серого"></canvas><p id="empty">Здесь появится твоя картина</p></div>
@@ -29,5 +30,5 @@
 </section>
 </div>
 </main>
-<script src="art-image.js"></script><script src="app.js"></script>
+<script src="art-image.js"></script><script src="app.js"></script><script src="upload.js"></script>
 </html>

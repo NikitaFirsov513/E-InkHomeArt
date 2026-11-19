@@ -1,4 +1,6 @@
-if(CONFIG_APP_ART_GRAY_TEST)
+if(CONFIG_APP_ART)
+    set(app_sources "art_main.c" "art_http.c" "heartbeat.c")
+elseif(CONFIG_APP_ART_GRAY_TEST)
     set(app_sources "art_gray_test_main.c" "heartbeat.c")
 elseif(CONFIG_APP_DISPLAY_TOUCH_TEST)
     set(app_sources "display_touch_main.c" "diagnostic_screen.c" "touch_test.c" "frame_pipeline.c" "heartbeat.c")
@@ -13,7 +15,16 @@ endif()
 idf_component_register(SRCS ${app_sources}
                        PRIV_REQUIRES esp_driver_gpio spi_flash esp_psram board uc8179 gt911 lis2dw12 art_store
                                      esp_adc esp_timer esp_driver_uart esp_driver_usb_serial_jtag
+                                     art_manager esp_wifi esp_netif esp_event nvs_flash esp_http_server
                        INCLUDE_DIRS "")
+
+if(CONFIG_APP_ART)
+    target_add_binary_data(${COMPONENT_LIB} "${PROJECT_DIR}/web/art/index.html" BINARY RENAME_TO art_index)
+    target_add_binary_data(${COMPONENT_LIB} "${PROJECT_DIR}/web/art/style.css" BINARY RENAME_TO art_style)
+    target_add_binary_data(${COMPONENT_LIB} "${PROJECT_DIR}/web/art/art-image.js" BINARY RENAME_TO art_codec)
+    target_add_binary_data(${COMPONENT_LIB} "${PROJECT_DIR}/web/art/app.js" BINARY RENAME_TO art_client)
+    target_add_binary_data(${COMPONENT_LIB} "${PROJECT_DIR}/web/art/upload.js" BINARY RENAME_TO art_upload_client)
+endif()
 
 # Temporary stage-2 photo verification; normal Wi-Fi upload is a later stage.
 # The path is a CMake argument, never a user photograph committed to the repo.
