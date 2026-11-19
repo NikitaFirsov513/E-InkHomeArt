@@ -6,6 +6,8 @@
 #include "lis2dw12_idf.h"
 #include "touch_test.h"
 #include "frame_pipeline.h"
+#include "art_frame.h"
+#include "art_store.h"
 
 /* No CRT or device is required by the test DLL. Only the SDK boundary is
  * simulated; uc8179.c, gt911.c, lis2dw12_idf.c and the ST driver are real code. */
@@ -480,6 +482,96 @@ static int walk_frame_pipeline(frame_pipeline_t p, unsigned depth)
     return 0;
 }
 
+static uint8_t art_flash[ART_STORE_MIN_BYTES],art_flash_before[ART_STORE_MIN_BYTES];
+static unsigned art_write_calls,art_fail_write,art_fail_after;
+static bool art_fail_read,art_fail_erase;
+static bool art_read(void *ctx,uint32_t offset,void *bytes,size_t n)
+{
+    (void)ctx;
+    if(art_fail_read || offset>sizeof(art_flash) || n>sizeof(art_flash)-offset)return false;
+    memcpy(bytes,art_flash+offset,n);return true;
+}
+static bool art_write(void *ctx,uint32_t offset,const void *bytes,size_t n)
+{
+    (void)ctx; ++art_write_calls;
+    if(offset>sizeof(art_flash) || n>sizeof(art_flash)-offset)return false;
+    bool fail=art_write_calls==art_fail_write;
+    if(fail && n>art_fail_after)n=art_fail_after;
+    const uint8_t *input=bytes;
+    for(size_t i=0;i<n;++i){if((art_flash[offset+i]&input[i])!=input[i])return false;art_flash[offset+i]&=input[i];}
+    return !fail;
+}
+static bool art_erase(void *ctx,uint32_t offset,size_t n)
+{
+    (void)ctx;
+    if(art_fail_erase || offset%ART_STORE_SECTOR_BYTES || n%ART_STORE_SECTOR_BYTES ||
+       offset>sizeof(art_flash) || n>sizeof(art_flash)-offset)return false;
+    memset(art_flash+offset,255,n);return true;
+}
+static int test_art_frame(void)
+{
+    static uint8_t packet[ART_FRAME_PACKET_BYTES];
+    CHECK(art_crc32((const uint8_t *)"123456789",9)==UINT32_C(0xcbf43926));
+    for(unsigned i=ART_FRAME_HEADER_BYTES;i<sizeof(packet);++i)packet[i]=0x1b;
+    CHECK(art_frame_encode(packet,sizeof(packet),packet+ART_FRAME_HEADER_BYTES,ART_FRAME_PIXEL_BYTES)==ART_FRAME_OK);
+    art_frame_view_t view;
+    CHECK(art_frame_parse(packet,sizeof(packet),&view)==ART_FRAME_OK && view.pixels==packet+64 && view.pixels[0]==0x1b);
+    CHECK(art_frame_parse(packet,sizeof(packet)-1,&view)==ART_FRAME_SIZE && !view.pixels);
+    packet[100]^=1;
+    CHECK(art_frame_parse(packet,sizeof(packet),&view)==ART_FRAME_PIXEL_CRC && !view.pixels);
+    packet[100]^=1;packet[24]^=1;
+    CHECK(art_frame_parse(packet,sizeof(packet),&view)==ART_FRAME_HEADER_CRC);
+    packet[24]^=1;packet[12]^=1;
+    CHECK(art_frame_parse(packet,sizeof(packet),&view)==ART_FRAME_GEOMETRY);
+    packet[12]^=1;packet[17]=1;
+    CHECK(art_frame_parse(packet,sizeof(packet),&view)==ART_FRAME_FORMAT);
+    packet[17]=0;packet[32]=1;
+    CHECK(art_frame_parse(packet,sizeof(packet),&view)==ART_FRAME_FORMAT);
+    CHECK(art_frame_parse(NULL,sizeof(packet),&view)==ART_FRAME_ARGUMENT);
+    return 0;
+}
+static int test_art_store(void)
+{
+    static uint8_t old_frame[ART_FRAME_PACKET_BYTES],new_frame[ART_FRAME_PACKET_BYTES],loaded[ART_FRAME_PACKET_BYTES];
+    memset(art_flash,255,sizeof(art_flash));art_write_calls=art_fail_write=0;art_fail_read=art_fail_erase=false;
+    const art_store_io_t io={.size=sizeof(art_flash),.read=art_read,.write=art_write,.erase=art_erase};
+    art_store_t store;
+    CHECK(art_store_open(&store,&io)==ART_STORE_EMPTY && store.ready);
+    CHECK(art_store_load(&store,loaded,sizeof(loaded))==ART_STORE_EMPTY);
+    memset(old_frame+64,0x1b,ART_FRAME_PIXEL_BYTES);memset(new_frame+64,0xe4,ART_FRAME_PIXEL_BYTES);
+    CHECK(art_frame_encode(old_frame,sizeof(old_frame),old_frame+64,ART_FRAME_PIXEL_BYTES)==ART_FRAME_OK);
+    CHECK(art_frame_encode(new_frame,sizeof(new_frame),new_frame+64,ART_FRAME_PIXEL_BYTES)==ART_FRAME_OK);
+    CHECK(art_store_save(&store,old_frame,sizeof(old_frame))==ART_STORE_OK && store.generation==1 && store.active_slot==0);
+    memcpy(art_flash_before,art_flash,sizeof(art_flash));
+    const unsigned cuts[]={0,1,8,24,32,63,64,96063};
+    for(unsigned operation=1;operation<=2;++operation)for(unsigned c=0;c<sizeof(cuts)/sizeof(cuts[0]);++c){
+        if(operation==2 && cuts[c]>=64)continue;
+        memcpy(art_flash,art_flash_before,sizeof(art_flash));
+        CHECK(art_store_open(&store,&io)==ART_STORE_OK);
+        art_write_calls=0;art_fail_write=operation;art_fail_after=cuts[c];
+        CHECK(art_store_save(&store,new_frame,sizeof(new_frame))==ART_STORE_IO);
+        art_fail_write=0;
+        CHECK(art_store_open(&store,&io)==ART_STORE_OK && store.generation==1);
+        CHECK(art_store_load(&store,loaded,sizeof(loaded))==ART_STORE_OK && !memcmp(loaded,old_frame,sizeof(loaded)));
+    }
+    CHECK(art_store_save(&store,new_frame,sizeof(new_frame))==ART_STORE_OK && store.generation==2 && store.active_slot==1);
+    CHECK(art_store_open(&store,&io)==ART_STORE_OK && store.generation==2);
+    CHECK(art_store_load(&store,loaded,sizeof(loaded))==ART_STORE_OK && !memcmp(loaded,new_frame,sizeof(loaded)));
+    /* Corruption of the newest picture recovers the earlier complete picture. */
+    art_flash[ART_STORE_SLOT_BYTES+ART_STORE_SECTOR_BYTES+64+123]^=1;
+    CHECK(art_store_open(&store,&io)==ART_STORE_OK && store.generation==1 && store.active_slot==0);
+    art_fail_erase=true;
+    CHECK(art_store_save(&store,new_frame,sizeof(new_frame))==ART_STORE_IO);
+    art_fail_erase=false;art_fail_read=true;
+    CHECK(art_store_open(&store,&io)==ART_STORE_IO && !store.ready);
+    CHECK(art_store_save(&store,new_frame,sizeof(new_frame))==ART_STORE_ARGUMENT);
+    art_fail_read=false;
+    CHECK(art_store_open(&store,&io)==ART_STORE_OK);
+    unsigned calls=art_write_calls;new_frame[100]^=1;
+    CHECK(art_store_save(&store,new_frame,sizeof(new_frame))==ART_STORE_INVALID_FRAME && art_write_calls==calls);
+    return 0;
+}
+
 static int test_frame_pipeline(void)
 {
     frame_pipeline_t p = {0};
@@ -628,6 +720,8 @@ static const struct { const char *name; int (*run)(void); } cases[] = {
     {"Changed rectangle: no-op, single byte, last row/column and full frame",test_changed_rectangle},
     {"Cleanup: partial budget, release/idle boundary, manual request and clear",test_cleanup_policy},
     {"Frame pipeline: immutable active frame, latest replacement and interleaved ownership",test_frame_pipeline},
+    {"Art frame: 4-level packet, CRC, geometry, reserved fields and truncation",test_art_frame},
+    {"Art store: replace, restart, torn writes, CRC recovery and failed-open write protection",test_art_store},
     {"GT911 allocation, absent device and wrong ID",test_gt_constructor_failures},
     {"GT911 explicit/automatic geometry validation",test_gt_geometry},
     {"GT911 fresh frame vs cached touch / release / I2C fault",test_gt_no_stale_touch},

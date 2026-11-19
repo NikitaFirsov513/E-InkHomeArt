@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>E-Ink Home Art — подготовка картины</title>
+<link rel="stylesheet" href="style.css">
+<main>
+<header><div><p class="eyebrow">E-INK HOME ART</p><h1>Твоя картина на экране</h1><p>Выбери PNG или JPEG. Подготовка выполняется на этом устройстве, без отправки фотографий в облако.</p></div><span class="badge">800 × 480 · четыре уровня серого</span></header>
+<div class="layout">
+<section class="controls" aria-label="Подготовка изображения">
+<label class="file">Выбрать изображение<input id="file" type="file" accept="image/png,image/jpeg"></label>
+<p id="filename" class="small">Файл ещё не выбран</p>
+<fieldset id="adjustments" disabled><legend>Как показать изображение</legend>
+<label>Композиция<select id="fit"><option value="cover">Заполнить экран — края могут обрезаться</option><option value="contain">Поместить целиком — с полями</option></select></label>
+<label>Положение по горизонтали <output id="x-value">0</output><input id="x" type="range" min="-100" max="100" value="0"></label>
+<label>Положение по вертикали <output id="y-value">0</output><input id="y" type="range" min="-100" max="100" value="0"></label>
+<label>Яркость <output id="brightness-value">0</output><input id="brightness" type="range" min="-100" max="100" value="0"></label>
+<label>Контраст <output id="contrast-value">0</output><input id="contrast" type="range" min="-100" max="100" value="0"></label>
+<label class="check"><input id="dither" type="checkbox" checked> Полутоновый узор для мягких переходов</label>
+<button id="reset" type="button" class="secondary">Сбросить обработку</button>
+</fieldset>
+<div class="actions"><button id="export" type="button" disabled>Сохранить кадр для проверки</button><button id="png" type="button" class="secondary" disabled>Скачать предпросмотр PNG</button></div>
+<p class="small">Первый этап разработки: подготовка и проверка кадра. Загрузка прямо на панель появится после подключения сетевого сервиса.</p>
+</section>
+<section class="result" aria-label="Предпросмотр на электронных чернилах">
+<div class="preview"><canvas id="preview" width="800" height="480" aria-label="Предпросмотр изображения в четырёх уровнях серого"></canvas><p id="empty">Здесь появится твоя картина</p></div>
+<p id="status" role="status">Выбери изображение для подготовки.</p>
+<p class="small">Предпросмотр показывает точные пиксели готового кадра: чёрный, два серых и белый. Отражение света, контраст и оттенки физического E‑Ink могут отличаться.</p>
+</section>
+</div>
+</main>
+<script src="art-image.js"></script><script src="app.js"></script>
+</html>

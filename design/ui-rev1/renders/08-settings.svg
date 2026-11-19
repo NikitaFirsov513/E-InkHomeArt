@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480" role="img">
+<title>Настройки · MVP</title>
+<rect width="100%" height="100%" fill="white"/>
+<text x="24" y="17" font-family="Segoe UI,sans-serif" font-size="32" font-weight="600" fill="black" dominant-baseline="text-before-edge">Настройки</text>
+<text x="514" y="23" font-family="Segoe UI,sans-serif" font-size="18" font-weight="600" fill="black" dominant-baseline="text-before-edge">Wi-Fi</text>
+<text x="618.0" y="23" font-family="Segoe UI,sans-serif" font-size="18" font-weight="400" fill="black" dominant-baseline="text-before-edge">78 %</text>
+<rect x="671" y="22" width="28" height="16" rx="2" fill="white" stroke="black" stroke-width="2"/>
+<rect x="700" y="27" width="3" height="6" rx="0" fill="black" stroke="none" stroke-width="1"/>
+<rect x="675" y="26" width="17" height="8" rx="0" fill="black" stroke="none" stroke-width="1"/>
+<rect x="718" y="10" width="58" height="44" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<circle cx="735" cy="32" r="2" fill="black" stroke="none" stroke-width="1"/>
+<circle cx="747" cy="32" r="2" fill="black" stroke="none" stroke-width="1"/>
+<circle cx="759" cy="32" r="2" fill="black" stroke="none" stroke-width="1"/>
+<polyline points="24,64 776,64" fill="none" stroke="black" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="24" y="90" font-family="Segoe UI,sans-serif" font-size="23" font-weight="600" fill="black" dominant-baseline="text-before-edge">Wi-Fi</text>
+<text x="356" y="94" font-family="Segoe UI,sans-serif" font-size="20" font-weight="400" fill="black" dominant-baseline="text-before-edge">Домашняя сеть</text>
+<rect x="626" y="82" width="150" height="56" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="654.3333333333334" y="99.0" font-family="Segoe UI,sans-serif" font-size="20" font-weight="600" fill="black" dominant-baseline="text-before-edge">Изменить</text>
+<polyline points="24,151 776,151" fill="none" stroke="black" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="24" y="170" font-family="Segoe UI,sans-serif" font-size="23" font-weight="600" fill="black" dominant-baseline="text-before-edge">Яндекс Дом</text>
+<text x="356" y="174" font-family="Segoe UI,sans-serif" font-size="20" font-weight="400" fill="black" dominant-baseline="text-before-edge">Подключён</text>
+<rect x="626" y="162" width="150" height="56" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="663.0" y="179.0" font-family="Segoe UI,sans-serif" font-size="20" font-weight="600" fill="black" dominant-baseline="text-before-edge">Аккаунт</text>
+<polyline points="24,231 776,231" fill="none" stroke="black" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="24" y="250" font-family="Segoe UI,sans-serif" font-size="23" font-weight="600" fill="black" dominant-baseline="text-before-edge">Возврат к картине</text>
+<text x="356" y="254" font-family="Segoe UI,sans-serif" font-size="20" font-weight="400" fill="black" dominant-baseline="text-before-edge">Через 45 секунд</text>
+<rect x="626" y="242" width="150" height="56" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="654.3333333333334" y="259.0" font-family="Segoe UI,sans-serif" font-size="20" font-weight="600" fill="black" dominant-baseline="text-before-edge">Изменить</text>
+<polyline points="24,311 776,311" fill="none" stroke="black" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="24" y="330" font-family="Segoe UI,sans-serif" font-size="23" font-weight="600" fill="black" dominant-baseline="text-before-edge">Изображение</text>
+<text x="356" y="334" font-family="Segoe UI,sans-serif" font-size="20" font-weight="400" fill="black" dominant-baseline="text-before-edge">Горный пейзаж</text>
+<rect x="626" y="322" width="150" height="56" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="660.6666666666666" y="339.0" font-family="Segoe UI,sans-serif" font-size="20" font-weight="600" fill="black" dominant-baseline="text-before-edge">Выбрать</text>
+<polyline points="24,391 776,391" fill="none" stroke="black" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="0" y="420" width="800" height="60" rx="0" fill="white" stroke="none" stroke-width="1"/>
+<polyline points="0,420 800,420" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="12" y="428" width="182" height="44" rx="8" fill="black" stroke="black" stroke-width="2"/>
+<text x="65.33333333333334" y="439.0" font-family="Segoe UI,sans-serif" font-size="20" font-weight="600" fill="white" dominant-baseline="text-before-edge">Главная</text>
+<rect x="210" y="428" width="182" height="44" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="258.5" y="439.0" font-family="Segoe UI,sans-serif" font-size="20" font-weight="600" fill="black" dominant-baseline="text-before-edge">Комнаты</text>
+<rect x="408" y="428" width="182" height="44" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="452.1666666666667" y="439.0" font-family="Segoe UI,sans-serif" font-size="20" font-weight="600" fill="black" dominant-baseline="text-before-edge">Сценарии</text>
+<rect x="606" y="428" width="182" height="44" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="658.1666666666666" y="439.0" font-family="Segoe UI,sans-serif" font-size="20" font-weight="600" fill="black" dominant-baseline="text-before-edge">Картина</text>
+</svg>

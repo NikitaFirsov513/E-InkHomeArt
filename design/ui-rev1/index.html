@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>E-Ink Home Art — варианты интерфейса Revision 1</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f4f3ef;color:#1c211f;font:16px/1.5 system-ui,sans-serif}main{max-width:1120px;margin:auto;padding:28px 24px 56px}header{display:flex;justify-content:space-between;align-items:start;gap:24px;margin-bottom:24px}h1{margin:0;font-size:30px;font-weight:600}p{margin:6px 0;color:#515a56}a{color:inherit}.tag{font-size:13px;border:1px solid #b4b9b3;border-radius:30px;padding:6px 12px;white-space:nowrap}.layout{display:grid;grid-template-columns:230px minmax(0,1fr);gap:24px}nav{display:flex;flex-direction:column;gap:6px}button{border:1px solid #b6bdb8;background:transparent;border-radius:8px;padding:12px 14px;text-align:left;font:inherit;color:inherit;cursor:pointer}button[aria-pressed=true]{background:#202923;color:white;border-color:#202923}figure{margin:0}#screen{display:block;width:100%;max-width:800px;aspect-ratio:5/3;border:1px solid #343c36;background:white}h2{font-size:22px;margin:18px 0 3px;font-weight:600}.links{display:flex;gap:20px;margin-top:16px}.note{font-size:14px;margin-top:20px}.overview{margin-top:36px}.overview img{display:block;width:100%;height:auto;border:1px solid #c9cdc8}button:focus-visible,a:focus-visible{outline:3px solid #5d7868;outline-offset:3px}@media(max-width:760px){header{display:block}.tag{display:inline-block;margin-top:12px}.layout{grid-template-columns:1fr}nav{display:grid;grid-template-columns:1fr 1fr}h1{font-size:25px}}
+</style>
+<main>
+<header><div><h1>E-Ink Home Art</h1><p>Интерфейс по ТЗ Revision 1 · макеты для согласования</p></div><span class="tag">800 × 480 · 1 бит на пиксель</span></header>
+<div class="layout">
+<nav aria-label="Выбрать макет">
+<button type="button" data-id="0" aria-pressed="true">A · Быстрые действия</button>
+<button type="button" data-id="1" aria-pressed="false">B · Сначала комната</button>
+<button type="button" data-id="2" aria-pressed="false">C · Картина + управление</button>
+<button type="button" data-id="3" aria-pressed="false">Art Mode</button>
+<button type="button" data-id="4" aria-pressed="false">Устройство · Яркость</button>
+<button type="button" data-id="5" aria-pressed="false">Ожидание команды</button>
+<button type="button" data-id="6" aria-pressed="false">Нет сети</button>
+<button type="button" data-id="7" aria-pressed="false">Настройки</button>
+</nav>
+<section aria-live="polite">
+<figure><img id="screen" src="renders/01-home-a.png" width="800" height="480" alt="Вариант A: шесть быстрых действий и нижняя навигация"></figure>
+<h2 id="caption">A · Быстрые действия</h2>
+<p id="description">Предлагается для MVP. Частые устройства и сценарии доступны с первого экрана; комнаты — отдельный раздел.</p>
+<div class="links"><a id="png" href="renders/01-home-a.png">PNG в полном размере</a><a id="svg" href="renders/01-home-a.svg">Редактируемый SVG</a><a href="analysis.md">Разбор ТЗ</a></div>
+<p class="note">Названия, время, заряд и состояния демонстрационные. Это рендеры, а не подключённый интерфейс устройства. Первое касание, тайм-аут 45 с, регуляторы и формат картин — предложения к согласованию.</p>
+</section>
+</div>
+<section class="overview"><img src="renders/00-overview.png" width="1680" height="1312" alt="Сравнение вариантов A, B, C и отдельного Art Mode"></section>
+</main>
+<script>
+const screens=[
+['01-home-a','A · Быстрые действия','Предлагается для MVP. Частые устройства и сценарии доступны с первого экрана; комнаты — отдельный раздел.'],
+['02-home-b','B · Сначала комната','Комнаты слева, устройства выбранной комнаты справа. Подходит для большого дома, иногда требует дополнительного нажатия.'],
+['03-home-c','C · Картина + управление','Во время управления рядом остаётся превью картины. Это Smart Home Mode; в Art Mode меню полностью исчезает.'],
+['04-art','Art Mode','Только изображение. Без постоянных часов, индикаторов и меню. После завершения сессии возвращается та же картина.'],
+['05-device','Устройство · Яркость','Текущее и выбранное значения разделены. Шаги, предустановки и применение одной командой вместо непрерывного слайдера.'],
+['06-pending','Ожидание команды','Статичный статус без анимации. Сохранённое состояние 65 % ещё не подменено запрошенными 75 %.'],
+['07-offline','Нет сети','Явно показаны сохранённые состояния и время их получения. Команды недоступны, картина и настройки остаются доступны.'],
+['08-settings','Настройки','Wi-Fi, аккаунт Яндекса, возврат к картине через 45 секунд и выбор локального изображения. Способ первичной настройки ещё не выбран.']
+];
+const buttons=[...document.querySelectorAll('button[data-id]')];
+for(const b of buttons)b.addEventListener('click',()=>{
+ const [file,title,description]=screens[Number(b.dataset.id)];
+ for(const peer of buttons)peer.setAttribute('aria-pressed',String(peer===b));
+ const img=document.getElementById('screen');img.src=`renders/${file}.png`;img.alt=title;
+ document.getElementById('caption').textContent=title;document.getElementById('description').textContent=description;
+ document.getElementById('png').href=`renders/${file}.png`;document.getElementById('svg').href=`renders/${file}.svg`;
+});
+</script>
+</html>

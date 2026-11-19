@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="480" viewBox="0 0 800 480" role="img">
+<title>Устройство · Команда выполняется</title>
+<rect width="100%" height="100%" fill="white"/>
+<rect x="24" y="12" width="104" height="44" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="47.83333333333333" y="23.0" font-family="Segoe UI,sans-serif" font-size="20" font-weight="600" fill="black" dominant-baseline="text-before-edge">Назад</text>
+<text x="150" y="20" font-family="Segoe UI,sans-serif" font-size="30" font-weight="600" fill="black" dominant-baseline="text-before-edge">Свет в гостиной</text>
+<text x="656.3333333333334" y="27" font-family="Segoe UI,sans-serif" font-size="18" font-weight="600" fill="black" dominant-baseline="text-before-edge">Отправляем…</text>
+<polyline points="24,70 776,70" fill="none" stroke="black" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="166" cy="184" r="57" fill="white" stroke="black" stroke-width="3"/>
+<polyline points="135,230 135,257 197,257 197,230" fill="none" stroke="black" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="145,268 187,268" fill="none" stroke="black" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="240.0,184.0 252.0,184.0" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="218.3259018078045,236.3259018078045 226.8111831820431,244.8111831820431" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="166.0,258.0 166.0,270.0" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="113.67409819219549,236.3259018078045 105.18881681795692,244.8111831820431" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="92.0,184.0 80.0,184.0" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="113.67409819219547,131.6740981921955 105.1888168179569,123.18881681795692" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="166.0,110.0 165.99999999999997,98.0" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<polyline points="218.3259018078045,131.67409819219546 226.81118318204307,123.1888168179569" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="119.66666666666666" y="292" font-family="Segoe UI,sans-serif" font-size="22" font-weight="600" fill="black" dominant-baseline="text-before-edge">Гостиная</text>
+<rect x="24" y="340" width="138" height="56" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="48.666666666666664" y="357.5" font-family="Segoe UI,sans-serif" font-size="19" font-weight="600" fill="black" dominant-baseline="text-before-edge">Включить</text>
+<rect x="178" y="340" width="138" height="56" rx="8" fill="black" stroke="black" stroke-width="2"/>
+<text x="195.5" y="357.5" font-family="Segoe UI,sans-serif" font-size="19" font-weight="600" fill="white" dominant-baseline="text-before-edge">Выключить</text>
+<text x="346" y="95" font-family="Segoe UI,sans-serif" font-size="24" font-weight="600" fill="black" dominant-baseline="text-before-edge">Яркость</text>
+<text x="707.6666666666666" y="103" font-family="Segoe UI,sans-serif" font-size="16" font-weight="400" fill="black" dominant-baseline="text-before-edge">Шаг 10 %</text>
+<text x="496.0" y="142" font-family="Segoe UI,sans-serif" font-size="58" font-weight="600" fill="black" dominant-baseline="text-before-edge">75 %</text>
+<rect x="346" y="220" width="80" height="56" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="376.3333333333333" y="233.0" font-family="Segoe UI,sans-serif" font-size="28" font-weight="600" fill="black" dominant-baseline="text-before-edge">−</text>
+<rect x="696" y="220" width="80" height="56" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="726.3333333333334" y="233.0" font-family="Segoe UI,sans-serif" font-size="28" font-weight="600" fill="black" dominant-baseline="text-before-edge">+</text>
+<text x="477.3333333333333" y="240" font-family="Segoe UI,sans-serif" font-size="18" font-weight="400" fill="black" dominant-baseline="text-before-edge">На устройстве: 65 %</text>
+<rect x="346" y="288" width="100" height="44" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="374.6666666666667" y="299.5" font-family="Segoe UI,sans-serif" font-size="19" font-weight="600" fill="black" dominant-baseline="text-before-edge">25 %</text>
+<rect x="456" y="288" width="100" height="44" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="484.6666666666667" y="299.5" font-family="Segoe UI,sans-serif" font-size="19" font-weight="600" fill="black" dominant-baseline="text-before-edge">50 %</text>
+<rect x="566" y="288" width="100" height="44" rx="8" fill="black" stroke="black" stroke-width="2"/>
+<text x="594.8333333333334" y="299.5" font-family="Segoe UI,sans-serif" font-size="19" font-weight="600" fill="white" dominant-baseline="text-before-edge">75 %</text>
+<rect x="676" y="288" width="100" height="44" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="700.8333333333334" y="299.5" font-family="Segoe UI,sans-serif" font-size="19" font-weight="600" fill="black" dominant-baseline="text-before-edge">100 %</text>
+<rect x="346" y="348" width="430" height="48" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="494.6666666666667" y="361.0" font-family="Segoe UI,sans-serif" font-size="20" font-weight="600" fill="black" dominant-baseline="text-before-edge">Отправляем…</text>
+<rect x="0" y="420" width="800" height="60" rx="0" fill="white" stroke="none" stroke-width="1"/>
+<polyline points="0,420 800,420" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="12" y="428" width="182" height="44" rx="8" fill="black" stroke="black" stroke-width="2"/>
+<text x="65.33333333333334" y="439.0" font-family="Segoe UI,sans-serif" font-size="20" font-weight="600" fill="white" dominant-baseline="text-before-edge">Главная</text>
+<rect x="210" y="428" width="182" height="44" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="258.5" y="439.0" font-family="Segoe UI,sans-serif" font-size="20" font-weight="600" fill="black" dominant-baseline="text-before-edge">Комнаты</text>
+<rect x="408" y="428" width="182" height="44" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="452.1666666666667" y="439.0" font-family="Segoe UI,sans-serif" font-size="20" font-weight="600" fill="black" dominant-baseline="text-before-edge">Сценарии</text>
+<rect x="606" y="428" width="182" height="44" rx="8" fill="white" stroke="black" stroke-width="2"/>
+<text x="658.1666666666666" y="439.0" font-family="Segoe UI,sans-serif" font-size="20" font-weight="600" fill="black" dominant-baseline="text-before-edge">Картина</text>
+</svg>

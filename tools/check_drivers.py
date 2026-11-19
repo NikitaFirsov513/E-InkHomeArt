@@ -46,9 +46,11 @@ def main():
         'components/gt911/gt911.c', 'components/lis2dw12/lis2dw12_idf.c',
         'components/lis2dw12/vendor/lis2dw12_reg.c', 'main/diagnostic_screen.c', 'main/touch_test.c',
         'main/frame_pipeline.c',
+        'components/art_frame/art_frame.c', 'components/art_store/art_store.c',
     ]
     includes = ['tests/host/stubs', 'components/uc8179/include', 'components/gt911/include',
-                'components/lis2dw12/include', 'components/lis2dw12/vendor', 'main']
+                'components/lis2dw12/include', 'components/lis2dw12/vendor', 'main',
+                'components/art_frame/include', 'components/art_store/include']
     objects = []
     for index, source in enumerate(sources):
         obj = build / f'{index}.obj'
@@ -62,7 +64,8 @@ def main():
     library = build / ('driver_regression.dll' if os.name == 'nt' else 'driver_regression.so')
     exports = ['host_case_count', 'host_case_name', 'host_case_run', 'host_failure',
                'diagnostic_screen_render', 'display_touch_screen_render',
-               'diagnostic_map_touch', 'diagnostic_target_hit', 'touch_test_screen_render']
+               'diagnostic_map_touch', 'diagnostic_target_hit', 'touch_test_screen_render',
+               'art_frame_parse', 'art_frame_encode', 'art_crc32']
     if os.name == 'nt':
         linker = args.linker or compiler.with_name('lld-link.exe')
         cmd = [str(linker)]
