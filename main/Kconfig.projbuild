@@ -1,6 +1,15 @@
 menu "E-InkHomeArt"
+    config APP_ART_GRAY_TEST
+        bool "Art four-gray panel verification"
+        default n
+        help
+            Separate stage-2 profile: factory OTP four-gray waveform, one
+            calibration frame at boot, optional embedded ArtFrame, UART and
+            touch reports. No partial updates, Flash writes or networking.
+
     config APP_DISPLAY_TOUCH_TEST
         bool "Display and touch assembly test"
+        depends on !APP_ART_GRAY_TEST
         default n
         help
             UC8179 screen, GT911 touch, UART0 and a timer-driven D6 heartbeat.
@@ -10,7 +19,7 @@ menu "E-InkHomeArt"
     config APP_LED_TEST
         bool "LED-only first assembly test"
         default y
-        depends on !APP_DISPLAY_TOUCH_TEST
+        depends on !APP_DISPLAY_TOUCH_TEST && !APP_ART_GRAY_TEST
         help
             Blink D6 on GPIO6 using a periodic timer (500 ms on / 500 ms off).
             No panel, touch,

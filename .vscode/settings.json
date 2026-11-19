@@ -4,6 +4,12 @@
       "board/esp32s3-builtin.cfg"
     ],
     "idf.port": "COM7",
+    "idf.buildPath": "${workspaceFolder}/build/art-gray",
+    "idf.sdkconfigFilePath": "${workspaceFolder}/sdkconfig.art-gray",
+    "idf.sdkconfigDefaults": [
+      "sdkconfig.defaults",
+      "sdkconfig.defaults.art-gray"
+    ],
     "idf.customExtraVars": {
       "IDF_TARGET": "esp32s3",
       "PYTHONUTF8": "1"
@@ -11,8 +17,8 @@
     "clangd.path": "D:\\Espressif\\tools\\esp-clangd\\esp-21.1.3_20260408\\esp-clangd\\bin\\clangd.exe",
     "clangd.arguments": [
       "--background-index",
-      "--query-driver=**/xtensa-*-elf-gcc*,**/xtensa-*-elf-g++*",
-      "--resource-dir=D:/Espressif/tools/esp-clang-libs/esp-21.1.3_20260408/esp-clang/lib/clang/21"
+      "--query-driver=**",
+      "--compile-commands-dir=d:\\PROJECTS\\ESP\\E-InkHomeArt/build/art-gray"
     ],
     "idf.flashType": "UART"
 }

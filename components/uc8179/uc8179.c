@@ -20,6 +20,7 @@ struct uc8179_device {
     bool powered;
     bool image_valid;
     bool partial_ready;
+    bool gray4;
     uc8179_update_stats_t stats;
 };
 
@@ -132,11 +133,12 @@ esp_err_t uc8179_wait_idle(uc8179_handle_t dev)
     return ESP_OK;
 }
 
-esp_err_t uc8179_init(uc8179_handle_t dev)
+static esp_err_t reset_panel(uc8179_handle_t dev)
 {
     if (!dev) return ESP_ERR_INVALID_ARG;
     dev->initialized = false;
     dev->powered = dev->image_valid = dev->partial_ready = false;
+    dev->gray4 = false;
     dev->stats = (uc8179_update_stats_t){0};
     esp_err_t err = gpio_set_level(dev->config.dc_pin, 0);
     if (err == ESP_OK) err = gpio_set_level(dev->config.reset_pin, 1);
@@ -157,6 +159,13 @@ esp_err_t uc8179_init(uc8179_handle_t dev)
     err = gpio_set_level(dev->config.reset_pin, 1);
     if (err != ESP_OK) return err;
     delay_ms(110);
+    return ESP_OK;
+}
+
+esp_err_t uc8179_init(uc8179_handle_t dev)
+{
+    esp_err_t err = reset_panel(dev);
+    if (err != ESP_OK) return err;
     const uint8_t panel = 0x1F;
     err = setting(dev, 0x00, &panel, 1);
     int64_t power_start = esp_timer_get_time();
@@ -174,7 +183,7 @@ esp_err_t uc8179_init(uc8179_handle_t dev)
 
 static esp_err_t display(uc8179_handle_t dev, const uint8_t *frame, uint8_t fill)
 {
-    if (!dev->initialized || !dev->powered || dev->partial_ready) return ESP_ERR_INVALID_STATE;
+    if (!dev->initialized || !dev->powered || dev->partial_ready || dev->gray4) return ESP_ERR_INVALID_STATE;
     esp_err_t err = uc8179_wait_idle(dev);
     int64_t transfer_start = esp_timer_get_time();
     if (err == ESP_OK) err = command(dev, 0x10);
@@ -207,10 +216,86 @@ esp_err_t uc8179_fill(uc8179_handle_t dev, uint8_t byte_pattern)
     return display(dev, NULL, byte_pattern);
 }
 
+esp_err_t uc8179_init_gray4(uc8179_handle_t dev)
+{
+    /* Good Display ESP32epdx d5ed3b7, GDEY075T7 EPD_Init_4G.
+     * This selects the factory OTP waveform; no custom LUT or voltage tuning. */
+    esp_err_t err = reset_panel(dev);
+    if (err != ESP_OK) return err;
+    const uint8_t panel = 0x1f, interval[] = {0x10, 0x07};
+    const uint8_t booster[] = {0x27, 0x27, 0x18, 0x17};
+    const uint8_t fixed = 0x02, temperature = 0x5f;
+    err = setting(dev, 0x00, &panel, 1);
+    if (err == ESP_OK) err = setting(dev, 0x50, interval, sizeof(interval));
+    int64_t start = esp_timer_get_time();
+    if (err == ESP_OK) err = command(dev, 0x04);
+    if (err == ESP_OK) {
+        dev->powered = true;
+        delay_ms(100); /* Match the vendor gray4 power-on settling time. */
+        err = uc8179_wait_idle(dev);
+    }
+    dev->stats.power_on_us = esp_timer_get_time() - start;
+    if (err == ESP_OK) err = setting(dev, 0x06, booster, sizeof(booster));
+    if (err == ESP_OK) err = setting(dev, 0xe0, &fixed, 1);
+    if (err == ESP_OK) err = setting(dev, 0xe5, &temperature, 1);
+    if (err == ESP_OK) dev->initialized = dev->gray4 = true;
+    return err;
+}
+
+static esp_err_t gray4_plane(uc8179_handle_t dev, const uint8_t *pixels, unsigned plane)
+{
+    esp_err_t err = gpio_set_level(dev->config.dc_pin, 1);
+    if (err != ESP_OK) return err;
+    /* OLD = inverted low bit, NEW = inverted high bit of each gray code.
+     * Exactly 48000 outputs/plane; each consumes two source bytes. The vendor
+     * EPD_WhiteScreen_ALL_4G NEW-loop bound is doubled: do not copy that overread. */
+    for (size_t offset = 0; offset < UC8179_FRAME_BYTES;) {
+        size_t count = UC8179_FRAME_BYTES - offset;
+        if (count > dev->chunk_size) count = dev->chunk_size;
+        for (size_t i = 0; i < count; ++i) {
+            uint16_t packed = ((uint16_t)pixels[2*(offset+i)] << 8) | pixels[2*(offset+i)+1];
+            uint8_t output = 0;
+            for (int shift = 14; shift >= 0; shift -= 2)
+                output = (uint8_t)((output << 1) | (((packed >> (shift+plane)) & 1U) ^ 1U));
+            dev->dma_buffer[i] = output;
+        }
+        spi_transaction_t tx = { .length = count * 8, .tx_buffer = dev->dma_buffer };
+        err = spi_device_polling_transmit(dev->spi, &tx);
+        if (err != ESP_OK) return err;
+        offset += count;
+    }
+    return ESP_OK;
+}
+
+esp_err_t uc8179_display_gray4(uc8179_handle_t dev, const uint8_t *pixels, size_t length)
+{
+    if (!dev || !pixels || length != UC8179_GRAY4_FRAME_BYTES) return ESP_ERR_INVALID_ARG;
+    if (!dev->initialized || !dev->powered || !dev->gray4) return ESP_ERR_INVALID_STATE;
+    esp_err_t err = uc8179_wait_idle(dev);
+    int64_t start = esp_timer_get_time();
+    if (err == ESP_OK) err = command(dev, 0x10);
+    if (err == ESP_OK) err = gray4_plane(dev, pixels, 0);
+    if (err == ESP_OK) err = command(dev, 0x13);
+    if (err == ESP_OK) err = gray4_plane(dev, pixels, 1);
+    dev->stats.transfer_us = esp_timer_get_time() - start;
+    dev->stats.bytes = UC8179_FRAME_BYTES * 2;
+    start = esp_timer_get_time();
+    if (err == ESP_OK) err = command(dev, 0x12);
+    if (err == ESP_OK) {
+        esp_rom_delay_us(300);
+        err = uc8179_wait_idle(dev);
+    }
+    dev->stats.refresh_us = esp_timer_get_time() - start;
+    /* Gray4 RAM is two gray bitplanes, never a valid monochrome OLD base. */
+    dev->image_valid = dev->partial_ready = false;
+    if (err != ESP_OK) dev->initialized = false;
+    return err;
+}
+
 esp_err_t uc8179_prepare_partial(uc8179_handle_t dev, const uint8_t *base, size_t length)
 {
     if (!dev || !base || length != UC8179_FRAME_BYTES) return ESP_ERR_INVALID_ARG;
-    if (!dev->initialized || !dev->powered || !dev->image_valid || dev->partial_ready)
+    if (!dev->initialized || !dev->powered || !dev->image_valid || dev->partial_ready || dev->gray4)
         return ESP_ERR_INVALID_STATE;
     /* Good Display ESP32epdx GDEY075T7: OTP partial TSFIX=2, TSSET=0x6e,
      * CDI=0xa9/0x07. UC8179 rev0.6 R50 N2OCP copies NEW to OLD after refresh.

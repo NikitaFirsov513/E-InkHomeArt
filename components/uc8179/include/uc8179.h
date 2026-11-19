@@ -7,10 +7,11 @@
 extern "C" {
 #endif
 
-/* GDEY075T7-T01, UC8179, monochrome full refresh using the panel's OTP LUT. */
+/* GDEY075T7-T01, UC8179, model-specific OTP full / partial / gray4 modes. */
 #define UC8179_WIDTH       800
 #define UC8179_HEIGHT      480
 #define UC8179_FRAME_BYTES ((UC8179_WIDTH / 8) * UC8179_HEIGHT)
+#define UC8179_GRAY4_FRAME_BYTES ((UC8179_WIDTH / 4) * UC8179_HEIGHT)
 #define UC8179_BUSY_LEVEL  0
 
 typedef struct uc8179_device *uc8179_handle_t;
@@ -34,6 +35,15 @@ esp_err_t uc8179_new(const uc8179_config_t *config, uc8179_handle_t *out);
 esp_err_t uc8179_delete(uc8179_handle_t device);
 /* Explicit reset + full-refresh setup + power-on. Also wakes from deep sleep. */
 esp_err_t uc8179_init(uc8179_handle_t device);
+/* Explicit reset + model-specific OTP four-gray setup (TSFIX=2, TSSET=0x5f).
+ * Full refresh only. Switching back to monochrome requires uc8179_init(). */
+esp_err_t uc8179_init_gray4(uc8179_handle_t device);
+/* Exactly 96000 bytes, row-major, four pixels/byte, MSB pair first:
+ * 0=black, 1=dark gray, 2=light gray, 3=white (ArtFrame pixel payload).
+ * Converts to two 48000-byte controller planes in the small DMA buffer.
+ * Call init_gray4 before display; then sleep/power_off as for monochrome.
+ * Does not accept the 64-byte ArtFrame header. No rotation/inversion. */
+esp_err_t uc8179_display_gray4(uc8179_handle_t device, const uint8_t *pixels, size_t length);
 esp_err_t uc8179_wait_idle(uc8179_handle_t device);
 /* Native panel RAM bytes, 1 bpp, MSB first, row-major, exactly 48000 bytes.
  * No rotation or pixel inversion is applied. Buffer may reside in PSRAM.

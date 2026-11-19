@@ -2,10 +2,10 @@
   "configurations": [
     {
       "name": "ESP-IDF",
-      "compileCommands": "${workspaceFolder}/build/compile_commands.json",
+      "compileCommands": "${workspaceFolder}/build/art-gray/compile_commands.json",
       "includePath": [
         "${workspaceFolder}/main",
-        "${workspaceFolder}/build/config",
+        "${workspaceFolder}/build/art-gray/config",
         "D:/esp/v6.1/esp-idf/components/esp_libc/platform_include",
         "D:/esp/v6.1/esp-idf/components/freertos/config/include",
         "D:/esp/v6.1/esp-idf/components/freertos/config/include/freertos",
@@ -124,7 +124,7 @@
       "compilerPath": "D:/Espressif/tools/xtensa-esp-elf/esp-15.2.0_20251204/xtensa-esp-elf/bin/xtensa-esp32s3-elf-gcc.exe",
       "compilerArgs": [
         "-mlongcalls",
-        "-specs=${workspaceFolder}/build/specs/picolibc.specs"
+        "-specs=${workspaceFolder}/build/art-gray/specs/picolibc.specs"
       ],
       "intelliSenseMode": "windows-gcc-x86",
       "cStandard": "gnu23",
@@ -140,7 +140,7 @@
         "_POSIX_READER_WRITER_LOCKS"
       ],
       "forcedInclude": [
-        "${workspaceFolder}/build/config/sdkconfig.h"
+        "${workspaceFolder}/build/art-gray/config/sdkconfig.h"
       ]
     }
   ],

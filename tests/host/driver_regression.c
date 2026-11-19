@@ -52,6 +52,7 @@ void *heap_caps_malloc(size_t size, unsigned caps)
 static int64_t clock_us;
 static unsigned pin_level[49], pin_mode[49], pin_interrupt[49];
 static int busy_level = 1;
+static bool busy_after_refresh;
 static unsigned address_latched;
 void vTaskDelay(TickType_t ticks) { clock_us += (int64_t)ticks*10000; }
 int64_t esp_timer_get_time(void) { return clock_us; }
@@ -106,6 +107,7 @@ esp_err_t spi_device_polling_transmit(spi_device_handle_t device, spi_transactio
     if (tx->flags & SPI_TRANS_USE_TXDATA) {
         spi_command = tx->tx_data[0];
         ++spi_command_count[spi_command];
+        if (spi_command == 0x12 && busy_after_refresh) busy_level = 0;
         if (spi_command == 0x10) old_size = 0;
         if (spi_command == 0x13) new_size = 0;
         return tx->length == 8 ? ESP_OK : ESP_ERR_INVALID_ARG;
@@ -264,6 +266,88 @@ static int test_epd_frame_and_recovery(void)
     CHECK(uc8179_delete(dev) == ESP_OK && allocation_count == 0 && spi_devices == 0);
     return 0;
 }
+static int test_epd_gray4_planes(void)
+{
+    static uint8_t pixels[UC8179_GRAY4_FRAME_BYTES];
+    static uint8_t mono[UC8179_FRAME_BYTES];
+    /* All 256 possible packed bytes, then an asymmetric final pixel. */
+    for (unsigned i = 0; i < sizeof(pixels); ++i) pixels[i] = (uint8_t)(i*37);
+    pixels[sizeof(pixels)-1] = 0x1b;
+    uc8179_config_t cfg = epd_config(); uc8179_handle_t dev;
+    bus_max = 128;
+    CHECK(uc8179_new(&cfg,&dev) == ESP_OK);
+    CHECK(uc8179_display_gray4(dev,pixels,sizeof(pixels)) == ESP_ERR_INVALID_STATE);
+    CHECK(uc8179_init_gray4(dev) == ESP_OK);
+    const uint8_t interval[] = {0x10,0x07}, booster[] = {0x27,0x27,0x18,0x17};
+    CHECK(spi_settings[0x00][0] == 0x1f && spi_settings[0xe0][0] == 2 && spi_settings[0xe5][0] == 0x5f);
+    CHECK(memcmp(spi_settings[0x50],interval,sizeof(interval)) == 0);
+    CHECK(memcmp(spi_settings[0x06],booster,sizeof(booster)) == 0);
+    unsigned calls = spi_calls;
+    CHECK(uc8179_display_gray4(dev,pixels,sizeof(pixels)-1) == ESP_ERR_INVALID_ARG);
+    CHECK(uc8179_display_gray4(dev,pixels,sizeof(pixels)+1) == ESP_ERR_INVALID_ARG);
+    CHECK(uc8179_display_gray4(dev,NULL,sizeof(pixels)) == ESP_ERR_INVALID_ARG && spi_calls == calls);
+    CHECK(uc8179_display_frame(dev,mono,sizeof(mono)) == ESP_ERR_INVALID_STATE);
+    CHECK(uc8179_fill(dev,0) == ESP_ERR_INVALID_STATE);
+    CHECK(uc8179_prepare_partial(dev,mono,sizeof(mono)) == ESP_ERR_INVALID_STATE);
+    CHECK(uc8179_display_gray4(dev,pixels,sizeof(pixels)) == ESP_OK);
+    CHECK(old_size == UC8179_FRAME_BYTES && new_size == UC8179_FRAME_BYTES && largest_chunk <= bus_max);
+    const uint8_t old_bit[] = {1,0,1,0}, new_bit[] = {1,1,0,0};
+    for (unsigned pixel = 0; pixel < UC8179_WIDTH*UC8179_HEIGHT; ++pixel) {
+        unsigned level = (pixels[pixel/4] >> (6-2*(pixel%4))) & 3;
+        unsigned shift = 7-pixel%8;
+        CHECK(((old_frame[pixel/8] >> shift) & 1) == old_bit[level]);
+        CHECK(((new_frame[pixel/8] >> shift) & 1) == new_bit[level]);
+    }
+    uc8179_update_stats_t stats;
+    CHECK(uc8179_get_update_stats(dev,&stats) == ESP_OK && stats.bytes == 96000);
+    CHECK(uc8179_display_partial(dev,mono,sizeof(mono)) == ESP_ERR_INVALID_STATE);
+    CHECK(uc8179_sleep(dev) == ESP_OK);
+    CHECK(uc8179_display_gray4(dev,pixels,sizeof(pixels)) == ESP_ERR_INVALID_STATE);
+    CHECK(uc8179_init(dev) == ESP_OK && uc8179_display_frame(dev,mono,sizeof(mono)) == ESP_OK);
+    CHECK(uc8179_prepare_partial(dev,mono,sizeof(mono)) == ESP_OK);
+    CHECK(uc8179_display_gray4(dev,pixels,sizeof(pixels)) == ESP_ERR_INVALID_STATE);
+    CHECK(uc8179_init_gray4(dev) == ESP_OK);
+    CHECK(uc8179_display_partial(dev,mono,sizeof(mono)) == ESP_ERR_INVALID_STATE);
+    CHECK(uc8179_sleep(dev) == ESP_OK && uc8179_delete(dev) == ESP_OK && allocation_count == 0);
+    return 0;
+}
+
+static int test_epd_gray4_recovery(void)
+{
+    static uint8_t pixels[UC8179_GRAY4_FRAME_BYTES];
+    uc8179_config_t cfg = epd_config(); uc8179_handle_t dev;
+    CHECK(uc8179_init_gray4(NULL) == ESP_ERR_INVALID_ARG);
+    CHECK(uc8179_display_gray4(NULL,pixels,sizeof(pixels)) == ESP_ERR_INVALID_ARG);
+    CHECK(uc8179_new(&cfg,&dev) == ESP_OK);
+    busy_level = 0;
+    CHECK(uc8179_init_gray4(dev) == ESP_ERR_TIMEOUT);
+    CHECK(uc8179_display_gray4(dev,pixels,sizeof(pixels)) == ESP_ERR_INVALID_STATE);
+    busy_level = 1;
+    CHECK(uc8179_power_off(dev) == ESP_OK);
+    spi_fail_at = spi_calls+2;
+    CHECK(uc8179_init_gray4(dev) == ESP_ERR_TIMEOUT);
+    CHECK(uc8179_display_gray4(dev,pixels,sizeof(pixels)) == ESP_ERR_INVALID_STATE);
+    spi_fail_at = 0;
+    CHECK(uc8179_init_gray4(dev) == ESP_OK);
+    spi_fail_at = spi_calls+2; /* First OLD data chunk. No refresh may follow. */
+    unsigned refreshes = spi_command_count[0x12];
+    CHECK(uc8179_display_gray4(dev,pixels,sizeof(pixels)) == ESP_ERR_TIMEOUT);
+    CHECK(spi_command_count[0x12] == refreshes);
+    CHECK(uc8179_display_gray4(dev,pixels,sizeof(pixels)) == ESP_ERR_INVALID_STATE);
+    spi_fail_at = 0;
+    CHECK(uc8179_power_off(dev) == ESP_OK && uc8179_init_gray4(dev) == ESP_OK);
+    busy_after_refresh = true;
+    int64_t start = clock_us;
+    CHECK(uc8179_display_gray4(dev,pixels,sizeof(pixels)) == ESP_ERR_TIMEOUT);
+    CHECK(clock_us-start >= 50000 && clock_us-start < 100000);
+    CHECK(uc8179_display_gray4(dev,pixels,sizeof(pixels)) == ESP_ERR_INVALID_STATE);
+    busy_after_refresh = false; busy_level = 1;
+    CHECK(uc8179_power_off(dev) == ESP_OK && uc8179_init_gray4(dev) == ESP_OK);
+    CHECK(uc8179_display_gray4(dev,pixels,sizeof(pixels)) == ESP_OK);
+    CHECK(uc8179_sleep(dev) == ESP_OK && uc8179_delete(dev) == ESP_OK && allocation_count == 0);
+    return 0;
+}
+
 static int test_gt_constructor_failures(void)
 {
     gt911_config_t cfg = touch_config(); gt911_handle_t dev = NULL;
@@ -717,6 +801,8 @@ static const struct { const char *name; int (*run)(void); } cases[] = {
     {"UC8179 frame chunks, transfer recovery, sleep, cleanup",test_epd_frame_and_recovery},
     {"UC8179 OTP partial, OLD baseline, full window, POF/wake and recovery",test_epd_partial},
     {"UC8179 cropped partial stride, byte alignment, last pixel and timing",test_epd_partial_region},
+    {"UC8179 gray4 OTP, all pixel codes, exact bitplanes, bounds and mode transitions",test_epd_gray4_planes},
+    {"UC8179 gray4 power, transfer and refresh BUSY faults / recovery",test_epd_gray4_recovery},
     {"Changed rectangle: no-op, single byte, last row/column and full frame",test_changed_rectangle},
     {"Cleanup: partial budget, release/idle boundary, manual request and clear",test_cleanup_policy},
     {"Frame pipeline: immutable active frame, latest replacement and interleaved ownership",test_frame_pipeline},
@@ -740,7 +826,7 @@ int host_case_run(int index)
     memset(spi_command_count,0,sizeof(spi_command_count));
     if (index < 0 || index >= host_case_count()) return -1;
     memset(allocated,0,sizeof(allocated)); allocation_calls = allocation_fail_at = allocation_count = 0;
-    invalid_free = false; failure = NULL; clock_us = 0; busy_level = 1;
+    invalid_free = false; failure = NULL; clock_us = 0; busy_level = 1; busy_after_refresh = false;
     memset(pin_level,0,sizeof(pin_level)); memset(pin_mode,0,sizeof(pin_mode)); memset(pin_interrupt,0,sizeof(pin_interrupt));
     address_latched = 0; fail_spi_add = fail_spi_remove = spi_driver_ready = false;
     spi_calls = spi_fail_at = spi_devices = 0; bus_max = 4096; largest_chunk = old_size = new_size = 0;
