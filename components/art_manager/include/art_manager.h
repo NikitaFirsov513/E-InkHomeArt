@@ -13,7 +13,6 @@ typedef struct {
     art_display_state_t display;
     esp_err_t display_error;
     art_store_result_t store_error;
-    int64_t next_refresh_us;
 } art_manager_status_t;
 
 /* Singleton owner of the store, one 96064-byte packet buffer, and panel task.

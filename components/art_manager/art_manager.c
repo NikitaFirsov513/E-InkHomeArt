@@ -2,13 +2,11 @@
 #include <inttypes.h>
 #include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "art_store_esp.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
-#define REFRESH_GAP_US INT64_C(180000000)
 _Static_assert(ART_FRAME_PIXEL_BYTES == UC8179_GRAY4_FRAME_BYTES, "Panel/frame mismatch");
 static const char *TAG = "ART_MANAGER";
 static art_store_t store;
@@ -34,7 +32,7 @@ static void display_worker(void *arg)
     for (;;) {
         ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(200));
         portENTER_CRITICAL(&status_lock);
-        bool due = pending && esp_timer_get_time() >= state.next_refresh_us;
+        bool due = pending;
         portEXIT_CRITICAL(&status_lock);
         if (!due || xSemaphoreTake(buffer_lock, 0) != pdTRUE) continue;
         uint32_t generation = store.generation;
@@ -46,9 +44,8 @@ static void display_worker(void *arg)
         state.display = ART_DISPLAY_BUSY;
         portEXIT_CRITICAL(&status_lock);
         if (err == ESP_OK) {
-            portENTER_CRITICAL(&status_lock);
-            state.next_refresh_us = esp_timer_get_time() + REFRESH_GAP_US;
-            portEXIT_CRITICAL(&status_lock);
+            /* A committed, explicitly selected photo has no artificial delay.
+             * The buffer mutex serializes init, SPI, BUSY and shutdown. */
             err = uc8179_init_gray4(panel);
             if (err == ESP_OK) err = uc8179_display_gray4(panel, buffer+ART_FRAME_HEADER_BYTES, ART_FRAME_PIXEL_BYTES);
             esp_err_t shutdown = err == ESP_OK ? uc8179_sleep(panel) : uc8179_power_off(panel);

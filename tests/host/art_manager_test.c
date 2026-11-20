@@ -95,12 +95,16 @@ int main(int argc,char **argv)
     art_manager_status(&s);assert(s.display==ART_DISPLAY_READY&&s.displayed_generation==1&&refreshes==1&&sleeps==1);
     fail_write=true;assert(upload()==ART_STORE_IO);fail_write=false;
     art_manager_status(&s);assert(s.saved_generation==1&&s.displayed_generation==1&&!mutex_owner);
-    assert(upload()==ART_STORE_OK);run_worker_once();assert(refreshes==1); /* 180 s gap. */
-    now=180000000;fail_panel=true;run_worker_once();
-    art_manager_status(&s);assert(s.saved_generation==2&&s.displayed_generation==1&&s.display==ART_DISPLAY_ERROR&&power_offs==1);
-    now=360000000;run_worker_once();assert(refreshes==1); /* No automatic fault loop. */
+    /* Second photo is displayed at the same clock time: no cooldown timer. */
+    assert(upload()==ART_STORE_OK);run_worker_once();assert(refreshes==2);
+    art_manager_status(&s);assert(s.saved_generation==2&&s.displayed_generation==2);
+    fail_panel=true;assert(upload()==ART_STORE_OK);run_worker_once();
+    art_manager_status(&s);assert(s.saved_generation==3&&s.displayed_generation==2&&s.display==ART_DISPLAY_ERROR&&power_offs==1);
+    run_worker_once();assert(refreshes==2); /* No automatic fault loop. */
     fail_panel=false;assert(upload()==ART_STORE_OK);run_worker_once();
-    art_manager_status(&s);assert(s.saved_generation==3&&s.displayed_generation==3&&refreshes==2&&sleeps==2);
-    puts("PASS: actual ArtManager upload/display ownership, partial abort, CRC/save failures, saved vs shown generations, interval and retry.");
+    art_manager_status(&s);assert(s.saved_generation==4&&s.displayed_generation==4&&refreshes==3&&sleeps==3);
+    for(unsigned i=0;i<3;++i){assert(upload()==ART_STORE_OK);run_worker_once();}
+    art_manager_status(&s);assert(s.saved_generation==7&&s.displayed_generation==7&&refreshes==6);
+    puts("PASS: actual ArtManager upload/display ownership, abort/CRC/save failures, immediate consecutive photos, saved vs shown generations and retry.");
     return 0;
 }

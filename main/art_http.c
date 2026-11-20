@@ -44,16 +44,15 @@ static esp_err_t status_handler(httpd_req_t *req)
     art_manager_status_t state;
     art_manager_status(&state);
     static const char *names[] = {"empty","queued","displaying","displayed","error"};
-    int64_t remaining = state.next_refresh_us-esp_timer_get_time();
     char json[640];
     snprintf(json, sizeof(json),
         "{\"storage_ready\":%s,\"has_frame\":%s,\"uploading\":%s,"
         "\"saved_generation\":%" PRIu32 ",\"displayed_generation\":%" PRIu32 ","
         "\"pixel_crc\":%" PRIu32 ",\"display_state\":\"%s\",\"display_error\":\"%s\","
-        "\"store_error\":%d,\"refresh_wait_seconds\":%" PRIi64 "}",
+        "\"store_error\":%d,\"refresh_wait_seconds\":0}",
         state.storage_ready?"true":"false",state.has_frame?"true":"false",state.uploading?"true":"false",
         state.saved_generation,state.displayed_generation,state.pixel_crc,names[state.display],
-        esp_err_to_name(state.display_error),(int)state.store_error,remaining>0?(remaining+999999)/1000000:0);
+        esp_err_to_name(state.display_error),(int)state.store_error);
     response_headers(req, "application/json");
     return httpd_resp_sendstr(req,json);
 }

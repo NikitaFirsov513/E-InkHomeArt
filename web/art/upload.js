@@ -20,10 +20,7 @@
       message('Картина сохранена, но обновление экрана завершилось ошибкой ('+device.display_error+'). Можно отправить её повторно.',true);return;
     }
     if(device.display_state==='displaying'){message('Картина сохранена. Обновляем экран…');return;}
-    if(device.display_state==='queued'){
-      const wait=Number(device.refresh_wait_seconds)||0;
-      message(wait>0?'Картина сохранена. Обновление экрана через '+wait+' с.':'Картина сохранена. Ожидаем начала обновления экрана…');return;
-    }
+    if(device.display_state==='queued'){message('Картина сохранена. Начинаем обновление экрана…');return;}
     if(device.has_frame&&device.display_state==='displayed'&&device.displayed_generation===device.saved_generation){
       message('Картина сохранена и передана на экран. Она останется на устройстве после отключения питания.');return;
     }

@@ -20,7 +20,7 @@ function harness(protocol='http:'){
       if(postMode==='network')throw new Error('connection lost after request');
       if(postMode==='busy')return {ok:false,status:409,json:async()=>({error:'busy'})};
       if(postMode==='unconfirmed')return {ok:true,json:async()=>({saved:false})};
-      state={...state,has_frame:true,saved_generation:state.saved_generation+1,display_state:'queued',refresh_wait_seconds:180};
+      state={...state,has_frame:true,saved_generation:state.saved_generation+1,display_state:'queued',refresh_wait_seconds:0};
       return {ok:true,json:async()=>({saved:true,generation:state.saved_generation})};
     }};
   vm.runInNewContext(code,context);
@@ -29,7 +29,7 @@ function harness(protocol='http:'){
 }
 (async()=>{
   const h=harness();await tick();h.window.ArtUpload.prepared();assert(!h.button.disabled);
-  await h.button.click();assert.equal(h.posts,1);assert(h.label.textContent.includes('сохранена')&&h.label.textContent.includes('180'));
+  await h.button.click();assert.equal(h.posts,1);assert(h.label.textContent.includes('сохранена')&&h.label.textContent.includes('Начинаем'));
   assert(!h.label.textContent.includes('передана на экран'));
   h.update({display_state:'displaying'});await h.poll();assert(h.button.disabled&&h.label.textContent.includes('Обновляем'));
   h.update({display_state:'displayed',displayed_generation:1});await h.poll();assert(!h.button.disabled&&h.label.textContent.includes('сохранена и передана'));

@@ -104,8 +104,8 @@ int main(void)
     assert(!strcmp(status,"415 Unsupported Media Type")&&!offset);
     reset();force_save_error=true;assert(request("/api/image",ART_FRAME_PACKET_BYTES)==ESP_FAIL);
     assert(!leased&&!snapshot.has_frame&&!strcmp(status,"500 Internal Server Error"));
-    reset();snapshot.display=ART_DISPLAY_QUEUED;snapshot.next_refresh_us=180000001;
-    assert(request("/api/status",0)==ESP_OK&&strstr(response,"\"refresh_wait_seconds\":181")&&strstr(response,"\"display_state\":\"queued\""));
+    reset();snapshot.display=ART_DISPLAY_QUEUED;
+    assert(request("/api/status",0)==ESP_OK&&strstr(response,"\"refresh_wait_seconds\":0")&&strstr(response,"\"display_state\":\"queued\""));
     puts("PASS: actual HTTP handlers: fragmented upload, exact size, CRC/header, disconnect, deadline, busy/storage errors, save acknowledgement and status.");
     return 0;
 }
