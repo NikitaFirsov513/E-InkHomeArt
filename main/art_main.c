@@ -15,6 +15,7 @@
 #include "freertos/task.h"
 #include "gt911.h"
 #include "heartbeat.h"
+#include "home_ui.h"
 #include "nvs_flash.h"
 
 #if !CONFIG_ESP_CONSOLE_UART_DEFAULT
@@ -24,6 +25,8 @@
 static const char *TAG = "ART_APP";
 static char ap_ssid[33];
 static gt911_handle_t touch;
+static uint16_t touch_width,touch_height;
+static unsigned touch_map;
 
 static void report(const char *name, esp_err_t err)
 {
@@ -69,6 +72,7 @@ static void setup_touch(void)
         err = gt911_new(&cfg,&touch);
     }
     report("GT911 / 0x5D",err);
+    if(touch)gt911_get_native_resolution(touch,&touch_width,&touch_height);
 }
 
 static esp_err_t setup_ap(void)
@@ -102,6 +106,7 @@ static void print_setup(void)
     ESP_LOGI(TAG,"Wi-Fi SSID: %s",ap_ssid);
     ESP_LOGI(TAG,"Wi-Fi: open network, no password");
     ESP_LOGI(TAG,"Photo page: http://192.168.4.1 (stay connected without Internet)");
+    ESP_LOGI(TAG,"UI: first touch opens demo / 45 s idle returns photo / h menu | a art | t touch map");
 }
 
 void app_main(void)
@@ -133,20 +138,33 @@ void app_main(void)
         print_setup();
         report("Photo HTTP server",art_http_start());
     }
-    ESP_LOGI(TAG,"ART APP READY / persistent gray4 / ? setup / no boot calibration");
+    ESP_LOGI(TAG,"ART UI READY / home A demo / 45 s return / UART ? h a t / photo upload has no cooldown");
     int64_t last_live=0,last_touch=0;
     for (;;) {
         char command;
-        if (uart_error == ESP_OK) while (uart_read_bytes(BOARD_DEBUG_UART_PORT,&command,1,0) == 1)
-            if (command == '?' && network == ESP_OK) print_setup();
+        if (uart_error == ESP_OK) while (uart_read_bytes(BOARD_DEBUG_UART_PORT,&command,1,0) == 1){
+            if(command=='?'&&network==ESP_OK)print_setup();
+            else if(command=='h')art_manager_open_menu();
+            else if(command=='a')art_manager_show_art();
+            else if(command=='t'){
+                touch_map=(touch_map+1)%8;art_manager_cancel_touch();
+                ESP_LOGI(TAG,"Touch map=%u native=%ux%u",touch_map,(unsigned)touch_width,(unsigned)touch_height);
+            }
+        }
         int64_t now=esp_timer_get_time();
         if (touch) {
             esp_lcd_touch_point_data_t points[GT911_MAX_POINTS];
             uint8_t count;
             bool fresh;
-            if (gt911_read_frame(touch,points,&count,&fresh) == ESP_OK && fresh && count && now-last_touch>=200000) {
-                ESP_LOGI(TAG,"TOUCH count=%u x=%u y=%u",(unsigned)count,(unsigned)points[0].x,(unsigned)points[0].y);
-                last_touch=now;
+            esp_err_t read=gt911_read_frame(touch,points,&count,&fresh);
+            if(read!=ESP_OK)art_manager_cancel_touch();
+            else if(fresh){
+                int x=-1,y=-1;
+                if(count==1)home_ui_map_touch(points[0].x,points[0].y,touch_width,touch_height,touch_map,&x,&y);
+                art_manager_touch(count,x,y,count?points[0].track_id:0,now);
+                if(count&&now-last_touch>=200000){
+                    ESP_LOGI(TAG,"TOUCH count=%u x=%d y=%d map=%u",(unsigned)count,x,y,touch_map);last_touch=now;
+                }
             }
         }
         if (now-last_live>=10000000) {

@@ -13,6 +13,8 @@ typedef struct {
     art_display_state_t display;
     esp_err_t display_error;
     art_store_result_t store_error;
+    bool menu_visible,menu_requested;
+    uint32_t ui_revision,ui_shown_revision;
 } art_manager_status_t;
 
 /* Singleton owner of the store, one 96064-byte packet buffer, and panel task.
@@ -26,3 +28,8 @@ void art_manager_status(art_manager_status_t *out);
 esp_err_t art_manager_begin_upload(uint8_t **packet);
 art_store_result_t art_manager_commit_upload(size_t length);
 void art_manager_abort_upload(void);
+/* Fresh, mapped touch frames only. Main task remains free while EPD is BUSY. */
+void art_manager_touch(unsigned count,int x,int y,unsigned id,int64_t now_us);
+void art_manager_cancel_touch(void);
+void art_manager_open_menu(void);
+void art_manager_show_art(void);

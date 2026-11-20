@@ -77,7 +77,7 @@ menu "E-InkHomeArt"
             Includes transfer, BUSY and power-off time, instead of adding a pause
             after them. The controller is never refreshed while still BUSY.
 
-    if !APP_LED_TEST
+    if !APP_LED_TEST && !APP_ART && !APP_ART_GRAY_TEST
     config DIAG_MIN_REFRESH_SECONDS
         int "Minimum interval between full screen updates (seconds)"
         range 180 3600

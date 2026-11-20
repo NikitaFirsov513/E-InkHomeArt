@@ -80,6 +80,8 @@ ehthumbs.db
 Desktop.ini
 
 # User-specific configuration files
+# Private OAuth credentials and tokens; never commit this directory.
+/secrets/
 *.user
 # General workspace files
 *.workspace

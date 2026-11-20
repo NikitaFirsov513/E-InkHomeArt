@@ -11,9 +11,10 @@ static uint8_t flash[ART_STORE_MIN_BYTES],packet[ART_FRAME_PACKET_BYTES],pixels[
 static void (*worker_fn)(void *);
 static void *current_task=(void *)1,*mutex_owner;
 static jmp_buf loop_exit;
-static unsigned notification_calls,refreshes,sleeps,power_offs;
+static unsigned notification_calls,refreshes,sleeps,power_offs,mono_full,mono_partial;
 static int64_t now;
 static bool fail_read,fail_write,fail_panel;
+static bool release_during_mono;
 static art_store_io_t io;
 
 const char *esp_err_to_name(esp_err_t err) { return err==ESP_OK?"ESP_OK":"ESP_FAIL"; }
@@ -58,6 +59,16 @@ esp_err_t uc8179_display_gray4(uc8179_handle_t panel,const uint8_t *data,size_t 
 }
 esp_err_t uc8179_sleep(uc8179_handle_t panel) { (void)panel;++sleeps;return ESP_OK; }
 esp_err_t uc8179_power_off(uc8179_handle_t panel) { (void)panel;++power_offs;return ESP_OK; }
+esp_err_t uc8179_init(uc8179_handle_t panel) { assert(panel==(void *)3);return ESP_OK; }
+esp_err_t uc8179_display_frame(uc8179_handle_t panel,const uint8_t *data,size_t n)
+{ (void)data;assert(panel==(void *)3&&n==48000);++mono_full;
+  if(release_during_mono){release_during_mono=false;art_manager_touch(0,-1,-1,0,now);}
+  return ESP_OK; }
+esp_err_t uc8179_prepare_partial(uc8179_handle_t panel,const uint8_t *data,size_t n)
+{ (void)data;assert(panel==(void *)3&&n==48000);return ESP_OK; }
+esp_err_t uc8179_display_partial_region(uc8179_handle_t panel,const uint8_t *data,size_t n,
+                                       uint16_t x,uint16_t y,uint16_t w,uint16_t h)
+{ (void)data;assert(panel==(void *)3&&n==48000&&w&&h&&x+w<=800&&y+h<=480);++mono_partial;return ESP_OK; }
 static art_store_result_t upload(void)
 {
     uint8_t *lease;assert(art_manager_begin_upload(&lease)==ESP_OK);
@@ -68,12 +79,36 @@ int main(int argc,char **argv)
     memset(flash,255,sizeof(flash));memset(pixels,0x1b,sizeof(pixels));
     io=(art_store_io_t){.size=sizeof(flash),.read=read_bytes,.write=write_bytes,.erase=erase_bytes};
     assert(art_frame_encode(packet,sizeof(packet),pixels,sizeof(pixels))==ART_FRAME_OK);
-    if(argc>1&&!strcmp(argv[1],"restore")) {
+    if(argc>1&&(!strcmp(argv[1],"restore")||!strcmp(argv[1],"ui"))) {
         art_store_t initial;assert(art_store_open(&initial,&io)==ART_STORE_EMPTY);
         assert(art_store_save(&initial,packet,sizeof(packet))==ART_STORE_OK);
         assert(art_manager_start((void *)3)==ESP_OK);run_worker_once();
         art_manager_status_t s;art_manager_status(&s);
         assert(s.has_frame&&s.saved_generation==1&&s.displayed_generation==1&&refreshes==1);
+        if(!strcmp(argv[1],"ui")){
+            release_during_mono=true;art_manager_touch(1,100,200,0,now);run_worker_once();
+            art_manager_status(&s);assert(s.menu_visible&&mono_full==1&&refreshes==1);
+            art_manager_touch(1,100,200,0,now);art_manager_touch(0,-1,-1,0,now);run_worker_once();
+            assert(mono_partial==1&&mono_full==1); /* Toggle in the displayed HOME. */
+            for(unsigned i=0;i<29;++i){
+                art_manager_touch(1,100,200,0,now);art_manager_touch(0,-1,-1,0,now);run_worker_once();
+            }
+            assert(mono_partial==30&&mono_full==1);
+            art_manager_touch(1,100,450,0,now);art_manager_touch(0,-1,-1,0,now);run_worker_once();
+            assert(mono_partial==30&&mono_full==1); /* No-op tab never triggers a refresh. */
+            art_manager_touch(1,100,200,0,now);art_manager_touch(0,-1,-1,0,now);run_worker_once();
+            assert(mono_partial==30&&mono_full==2); /* Preserve the established prototype budget. */
+            /* An interrupted upload destroys the RAM baseline, but not photo. */
+            uint8_t *p;assert(art_manager_begin_upload(&p)==ESP_OK);memset(p,0xcc,1000);art_manager_abort_upload();
+            run_worker_once();assert(mono_full==3);
+            now+=45000000;run_worker_once();art_manager_status(&s);
+            assert(!s.menu_visible&&s.displayed_generation==1&&refreshes==2);
+            art_manager_open_menu();run_worker_once();assert(mono_full==4);
+            assert(upload()==ART_STORE_OK);run_worker_once();art_manager_status(&s);
+            assert(!s.menu_visible&&s.saved_generation==2&&s.displayed_generation==2&&refreshes==3);
+            puts("PASS: actual manager Art -> full UI -> partial toggle -> aborted upload rebase -> 45s same-photo restore -> uploaded photo exit.");
+            return 0;
+        }
         puts("PASS: actual ArtManager restores and displays a committed Flash frame at boot.");return 0;
     }
     assert(art_manager_start((void *)3)==ESP_OK);

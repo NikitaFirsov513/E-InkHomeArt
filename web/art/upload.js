@@ -17,10 +17,12 @@
     if(!device.storage_ready){message('Хранилище недоступно. Проверь журнал UART устройства.',true);return;}
     if(wanted!==null&&device.saved_generation!==wanted){message('На устройстве уже выбрана другая картина. Можно отправить эту снова.');return;}
     if(device.display_state==='error'){
+      if(device.target_mode==='home'){message('Не удалось обновить меню панели ('+device.display_error+'). Картина во Flash сохранена.',true);return;}
       message('Картина сохранена, но обновление экрана завершилось ошибкой ('+device.display_error+'). Можно отправить её повторно.',true);return;
     }
-    if(device.display_state==='displaying'){message('Картина сохранена. Обновляем экран…');return;}
-    if(device.display_state==='queued'){message('Картина сохранена. Начинаем обновление экрана…');return;}
+    if(device.display_state==='displaying'){message(device.target_mode==='home'?'Открываем меню панели…':device.has_frame?'Картина сохранена. Обновляем экран…':'Готовим экран загрузки…');return;}
+    if(device.display_state==='queued'){message(device.target_mode==='home'?'Открываем меню панели…':'Картина сохранена. Начинаем обновление экрана…');return;}
+    if(device.screen_mode==='home'){message('На панели открыт демонстрационный интерфейс. Отправка фото вернёт картину на экран.');return;}
     if(device.has_frame&&device.display_state==='displayed'&&device.displayed_generation===device.saved_generation){
       message('Картина сохранена и передана на экран. Она останется на устройстве после отключения питания.');return;
     }

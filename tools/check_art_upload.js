@@ -37,6 +37,11 @@ function harness(protocol='http:'){
   h.mode='unconfirmed';await h.button.click();assert(h.label.textContent.includes('не подтвердило сохранение'));
   h.mode='network';await h.button.click();assert(h.label.textContent.includes('не подтверждена'));
   h.mode='ok';await h.button.click();assert(h.label.textContent.includes('сохранена')&&!h.label.textContent.includes('не подтверждена'));
+  h.update({screen_mode:'home',target_mode:'home',display_state:'displayed',displayed_generation:2});await h.poll();
+  assert(h.label.textContent.includes('демонстрационный интерфейс')&&!h.button.disabled);
+  h.update({display_state:'error',display_error:'ESP_ERR_TIMEOUT'});await h.poll();
+  assert(h.label.textContent.includes('обновить меню'));
+  h.update({screen_mode:'art',target_mode:'art'});
   h.update({display_state:'error',display_error:'ESP_ERR_TIMEOUT'});await h.poll();assert(h.label.textContent.includes('ошибкой (ESP_ERR_TIMEOUT)'));
   h.update({saved_generation:3,display_state:'queued'});await h.poll();assert(h.label.textContent.includes('другая картина'));
   h.offline=true;await h.poll();assert(h.button.disabled);

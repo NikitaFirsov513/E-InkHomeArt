@@ -1,0 +1,26 @@
+"""Run actual portable UI code and generate 800x480 firmware raster previews."""
+from pathlib import Path
+import ctypes as ct
+import os
+import subprocess
+from check_drivers import find_clang
+from preview_diagnostics import png
+
+root=Path(__file__).resolve().parents[1]
+out=root/'build/host-ui';out.mkdir(parents=True,exist_ok=True)
+sources=['tests/host/home_ui_test.c','components/home_ui/home_ui.c',
+         'components/home_ui/home_ui_render.c','components/home_ui/home_ui_font.c']
+cmd=[str(find_clang()),'-std=c11','-O2','-Wall','-Wextra','-Werror',
+     '-I'+str(root/'components/home_ui/include'),*[str(root/p) for p in sources]]
+exe=out/('home-ui-test.exe' if os.name=='nt' else 'home-ui-test')
+subprocess.run([*cmd,'-o',str(exe)],check=True)
+subprocess.run([str(exe)],check=True)
+libpath=out/('home-ui.dll' if os.name=='nt' else 'home-ui.so')
+link=['-Wl,/EXPORT:home_ui_test_preview'] if os.name=='nt' else ['-fPIC']
+subprocess.run([*cmd,'-shared',*link,'-o',str(libpath)],check=True)
+lib=ct.CDLL(str(libpath));render=lib.home_ui_test_preview
+render.argtypes=[ct.c_uint,ct.POINTER(ct.c_uint8),ct.c_size_t];render.restype=ct.c_bool
+for page,name in enumerate(['home','rooms','room','scenes','device','settings','empty-art']):
+    frame=(ct.c_uint8*48000)();assert render(page,frame,48000),name
+    png(out/(name+'.png'),bytes(frame))
+print('Firmware raster previews:',out)
