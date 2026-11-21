@@ -49,11 +49,11 @@ static esp_err_t status_handler(httpd_req_t *req)
         "{\"storage_ready\":%s,\"has_frame\":%s,\"uploading\":%s,"
         "\"saved_generation\":%" PRIu32 ",\"displayed_generation\":%" PRIu32 ","
         "\"pixel_crc\":%" PRIu32 ",\"display_state\":\"%s\",\"display_error\":\"%s\","
-        "\"store_error\":%d,\"refresh_wait_seconds\":0,\"screen_mode\":\"%s\",\"target_mode\":\"%s\"}",
+        "\"store_error\":%d,\"refresh_wait_seconds\":0,\"screen_mode\":\"%s\",\"target_mode\":\"%s\",\"ui_theme\":\"%s\"}",
         state.storage_ready?"true":"false",state.has_frame?"true":"false",state.uploading?"true":"false",
         state.saved_generation,state.displayed_generation,state.pixel_crc,names[state.display],
         esp_err_to_name(state.display_error),(int)state.store_error,
-        state.menu_visible?"home":"art",state.menu_requested?"home":"art");
+        state.menu_visible?"home":"art",state.menu_requested?"home":"art",state.dark_theme?"dark":"light");
     response_headers(req, "application/json");
     return httpd_resp_sendstr(req,json);
 }

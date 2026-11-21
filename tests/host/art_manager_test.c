@@ -11,6 +11,7 @@ static uint8_t flash[ART_STORE_MIN_BYTES],packet[ART_FRAME_PACKET_BYTES],pixels[
 static void (*worker_fn)(void *);
 static void *current_task=(void *)1,*mutex_owner;
 static jmp_buf loop_exit;
+static uint8_t last_mono[48000];
 static unsigned notification_calls,refreshes,sleeps,power_offs,mono_full,mono_partial;
 static int64_t now;
 static bool fail_read,fail_write,fail_panel;
@@ -61,11 +62,11 @@ esp_err_t uc8179_sleep(uc8179_handle_t panel) { (void)panel;++sleeps;return ESP_
 esp_err_t uc8179_power_off(uc8179_handle_t panel) { (void)panel;++power_offs;return ESP_OK; }
 esp_err_t uc8179_init(uc8179_handle_t panel) { assert(panel==(void *)3);return ESP_OK; }
 esp_err_t uc8179_display_frame(uc8179_handle_t panel,const uint8_t *data,size_t n)
-{ (void)data;assert(panel==(void *)3&&n==48000);++mono_full;
+{ assert(panel==(void *)3&&n==48000);memcpy(last_mono,data,n);++mono_full;
   if(release_during_mono){release_during_mono=false;art_manager_touch(0,-1,-1,0,now);}
   return ESP_OK; }
 esp_err_t uc8179_prepare_partial(uc8179_handle_t panel,const uint8_t *data,size_t n)
-{ (void)data;assert(panel==(void *)3&&n==48000);return ESP_OK; }
+{ assert(panel==(void *)3&&n==48000&&!memcmp(last_mono,data,n));return ESP_OK; }
 esp_err_t uc8179_display_partial_region(uc8179_handle_t panel,const uint8_t *data,size_t n,
                                        uint16_t x,uint16_t y,uint16_t w,uint16_t h)
 { (void)data;assert(panel==(void *)3&&n==48000&&w&&h&&x+w<=800&&y+h<=480);++mono_partial;return ESP_OK; }
@@ -94,7 +95,7 @@ int main(int argc,char **argv)
             live.device_count=1;live.devices[0].available=live.devices[0].has_toggle=true;
             snprintf(live.devices[0].name,sizeof(live.devices[0].name),"Real lamp");
             snprintf(live.devices[0].state,sizeof(live.devices[0].state),"OFF");
-            art_manager_home_update(&live);art_manager_open_menu();run_worker_once();assert(mono_full==1);
+            art_manager_home_update(&live);art_manager_open_menu();run_worker_once();assert(mono_full==1&&last_mono[0]==0xff);
             art_manager_touch(1,100,200,0,now);art_manager_touch(0,-1,-1,0,now);
             assert(home_submits==1&&home_command.kind==HOME_CMD_TOGGLE&&home_command.epoch==2&&home_command.slot==0&&home_command.value==1);
             run_worker_once();assert(mono_partial==0); // A queued command has not changed actual lamp state.
@@ -102,6 +103,10 @@ int main(int argc,char **argv)
             art_manager_home_update(&live);run_worker_once();assert(mono_partial==1); // Identical poll never redraws.
             live.pending=false;live.devices[0].on=true;snprintf(live.devices[0].state,sizeof(live.devices[0].state),"ON");
             art_manager_home_update(&live);run_worker_once();assert(mono_partial==2);
+            art_manager_set_dark_theme(true);run_worker_once();art_manager_status(&s);
+            assert(s.dark_theme&&mono_full==2&&last_mono[0]==0); // Theme change cleans fully.
+            art_manager_set_dark_theme(false);run_worker_once();art_manager_status(&s);
+            assert(!s.dark_theme&&mono_full==3&&last_mono[0]==0xff);
             now+=45000000;run_worker_once();art_manager_status(&s);assert(!s.menu_visible&&s.displayed_generation==1&&refreshes==2);
             puts("PASS: actual ArtManager live snapshots, queued command without fake state, pending/confirmed partials, unchanged poll suppression and same-photo return.");return 0;
         }

@@ -20,7 +20,7 @@ subprocess.run([str(binary)], check=True)
 manager = build / ('art-manager-test.exe' if os.name == 'nt' else 'art-manager-test')
 manager_sources = ['tests/host/art_manager_test.c', 'components/art_manager/art_manager.c',
                    'components/art_store/art_store.c', 'components/art_frame/art_frame.c',
-                   'components/home_ui/home_ui.c','components/home_ui/home_ui_render.c','components/home_ui/home_ui_font.c']
+                   'components/home_ui/home_ui.c','components/home_ui/home_ui_render.c','components/home_ui/home_ui_font.c','components/home_ui/vendor/qrcodegen/qrcodegen.c']
 subprocess.run([str(find_clang()), '-std=gnu11', '-O2', '-Wall', '-Wextra', '-Werror',
                 *['-I'+str(root/p) for p in includes], *[str(root/p) for p in manager_sources],
                 '-o', str(manager)], check=True)

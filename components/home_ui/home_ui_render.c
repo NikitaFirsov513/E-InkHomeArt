@@ -1,5 +1,6 @@
 #include "home_ui.h"
 #include "home_ui_font.h"
+#include "vendor/qrcodegen/qrcodegen.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -83,6 +84,24 @@ static bool fit(uint8_t *f,int x,int y,const char *s,const home_font_t *font,boo
     }
     clipped[n]=0;return text(f,x,y,clipped,font,black,width);
 }
+/* Integer modules and a four-module quiet zone: scan the physical E-Ink,
+ * never a scaled/antialiased bitmap. Scratch stays below 1 KB on this task. */
+static bool qr_code(uint8_t *frame,int left,int top,int extent,const char *payload)
+{
+    enum { MAX_VERSION=9,QUIET=4 };
+    uint8_t scratch[qrcodegen_BUFFER_LEN_FOR_VERSION(MAX_VERSION)];
+    uint8_t code[qrcodegen_BUFFER_LEN_FOR_VERSION(MAX_VERSION)];
+    if(!payload||!payload[0]||!qrcodegen_encodeText(payload,scratch,code,qrcodegen_Ecc_MEDIUM,
+        qrcodegen_VERSION_MIN,MAX_VERSION,qrcodegen_Mask_AUTO,true))return false;
+    int size=qrcodegen_getSize(code),scale=extent/(size+2*QUIET);
+    if(scale<3)return false;
+    int span=(size+2*QUIET)*scale;
+    int x0=left+(extent-span)/2+QUIET*scale,y0=top+(extent-span)/2+QUIET*scale;
+    rect(frame,left,top,extent,extent,false);
+    for(int y=0;y<size;++y)for(int x=0;x<size;++x)
+        if(qrcodegen_getModule(code,x,y))rect(frame,x0+x*scale,y0+y*scale,scale,scale,true);
+    return true;
+}
 static bool live_render(uint8_t *f,size_t length,const home_ui_t *u)
 {
     if(length!=HOME_UI_BYTES||!u->live)return false;
@@ -99,9 +118,11 @@ static bool live_render(uint8_t *f,size_t length,const home_ui_t *u)
         char line[128];snprintf(line,sizeof(line),"Домашняя сеть: %s",l->ip[0]?l->ip:"нет подключения");
         ok&=fit(f,24,114,line,&home_font_20,true,752);
         if(l->waiting){
-            ok&=text(f,24,160,"Откройте на телефоне:",&home_font_20,true,752);
-            ok&=fit(f,24,200,l->url,&home_font_20,true,752);
-            snprintf(line,sizeof(line),"Код: %s",l->code);ok&=fit(f,24,244,line,&home_font_28,true,752);
+            bool qr=qr_code(f,532,132,240,l->url);
+            ok&=text(f,24,160,qr?"Наведите камеру на QR":"Откройте ссылку на телефоне",&home_font_20,true,480);
+            ok&=text(f,24,202,"Введите код на странице Яндекса:",&home_font_20,true,480);
+            snprintf(line,sizeof(line),"Код: %s",l->code);ok&=fit(f,24,244,line,&home_font_28,true,480);
+            ok&=fit(f,24,286,l->url,&home_font_18,true,480);
         }else{
             ok&=text(f,24,172,l->authorized?"Яндекс: аккаунт подключён":"Яндекс: требуется вход",&home_font_20,true,752);
             ok&=text(f,24,228,"Фото: http://192.168.4.1",&home_font_20,true,752);
@@ -141,6 +162,11 @@ static bool live_render(uint8_t *f,size_t length,const home_ui_t *u)
         const home_ui_control_t *c=&controls[i];if(!c->label)continue;
         rect(f,c->x,c->y,c->w,c->h,c->filled);box(f,c->x,c->y,c->w,c->h);
         ok&=fit(f,c->x+10,c->y+(c->h-home_font_20.height)/2,c->label,&home_font_20,!c->filled,c->w-20);
+    }
+    if(u->dark_theme){
+        for(size_t i=0;i<length;++i)f[i]^=0xff;
+        /* Login QR always keeps standard black modules on a white quiet zone. */
+        if(u->page==HOME_PAGE_SETTINGS&&l->waiting)qr_code(f,532,132,240,l->url);
     }
     return ok;
 }
@@ -215,4 +241,17 @@ bool home_ui_render_empty_art(uint8_t *f,size_t length)
     ok&=text(f,64,254,"Откройте http://192.168.4.1 и загрузите фото",&home_font_20,true,672);
     ok&=text(f,64,350,"Коснитесь экрана, чтобы открыть меню",&home_font_18,true,672);
     return ok;
+}
+
+bool home_ui_render_panel(uint8_t *frame,size_t length,const home_ui_t *ui)
+{
+    if(!home_ui_render(frame,length,ui))return false;
+    for(size_t i=0;i<length;++i)frame[i]^=0xff;
+    return true;
+}
+bool home_ui_render_empty_art_panel(uint8_t *frame,size_t length)
+{
+    if(!home_ui_render_empty_art(frame,length))return false;
+    for(size_t i=0;i<length;++i)frame[i]^=0xff;
+    return true;
 }

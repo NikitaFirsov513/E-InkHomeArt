@@ -17,6 +17,7 @@ typedef struct {
     double live_draft;
     home_command_t command;
     bool active, visible, contact, require_release, pressed;
+    bool dark_theme;
     uint8_t pointer_id, room, device, return_page, last_scene;
     bool light_on[2], heat_on;
     uint8_t brightness[2], temperature, curtains, draft;
@@ -42,7 +43,7 @@ bool home_ui_map_touch(uint16_t x,uint16_t y,uint16_t native_w,uint16_t native_h
                        unsigned orientation,int *screen_x,int *screen_y);
 unsigned home_ui_controls(const home_ui_t *ui,home_ui_control_t *out,unsigned capacity);
 unsigned home_ui_target(const home_ui_t *ui,int x,int y);
-/* 1 bpp, black=1, same native byte polarity as the existing UI bench. */
+/* Logical 1 bpp, black=1. Use render_panel for physical UC8179 bytes. */
 bool home_ui_render(uint8_t *frame,size_t length,const home_ui_t *ui);
 bool home_ui_render_empty_art(uint8_t *frame,size_t length);
 bool home_ui_changed_region(const uint8_t *before,const uint8_t *after,size_t length,home_ui_region_t *region);
@@ -50,3 +51,8 @@ bool home_ui_changed_region(const uint8_t *before,const uint8_t *after,size_t le
 /* Live data is borrowed; caller serializes updates with touch/render snapshots. */
 void home_ui_set_live(home_ui_t *ui,const home_live_data_t *data);
 unsigned home_live_slots(const home_ui_t *ui,unsigned slots[6]);
+
+void home_ui_set_dark_theme(home_ui_t *ui,bool dark);
+/* UC8179 mono CDI DDX=01 uses 1=white, unlike the logical renderer's 1=black. */
+bool home_ui_render_panel(uint8_t *frame,size_t length,const home_ui_t *ui);
+bool home_ui_render_empty_art_panel(uint8_t *frame,size_t length);

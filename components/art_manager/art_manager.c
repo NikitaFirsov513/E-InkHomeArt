@@ -25,7 +25,7 @@ static bool pending;
 static home_ui_t ui;
 static home_live_data_t *live,*render_live;
 static bool (*submit_home)(const home_command_t *);
-static bool mono_baseline;
+static bool mono_baseline,shown_dark_theme;
 static unsigned partials;
 /* Keep the prototype's previously exercised 30-partial UI budget.
  * Vendor recommendation is five; verify ghosting on the physical UI. */
@@ -37,6 +37,7 @@ _Static_assert(ART_FRAME_PACKET_BYTES >= 2*HOME_UI_BYTES,"UI buffers must fit th
 static void publish_ui(void)
 {
     state.menu_requested=ui.active;
+    state.dark_theme=ui.dark_theme;
     state.ui_revision=ui.revision;
     state.ui_shown_revision=ui.shown_revision;
 }
@@ -71,10 +72,10 @@ static void display_worker(void *arg)
         bool menu=requested.active;
         if(err==ESP_OK&&menu){
             uint8_t *shown=buffer+HOME_UI_BYTES;
-            if(!home_ui_render(buffer,HOME_UI_BYTES,&requested))err=ESP_ERR_INVALID_ARG;
+            if(!home_ui_render_panel(buffer,HOME_UI_BYTES,&requested))err=ESP_ERR_INVALID_ARG;
             home_ui_region_t region={0};
             bool dirty=!mono_baseline||home_ui_changed_region(shown,buffer,HOME_UI_BYTES,&region);
-            bool full=!mono_baseline||(dirty&&partials>=UI_PARTIAL_LIMIT);
+            bool full=!mono_baseline||requested.dark_theme!=shown_dark_theme||(dirty&&partials>=UI_PARTIAL_LIMIT);
             if(err==ESP_OK&&dirty){
                 ESP_LOGI(TAG,"UI %s revision=%" PRIu32,full?"FULL":"PARTIAL",requested.revision);
                 if(full){
@@ -89,7 +90,7 @@ static void display_worker(void *arg)
                 esp_err_t off=uc8179_power_off(panel);
                 if(err==ESP_OK)err=off;
             }
-            if(err==ESP_OK)memcpy(shown,buffer,HOME_UI_BYTES);
+            if(err==ESP_OK){memcpy(shown,buffer,HOME_UI_BYTES);shown_dark_theme=requested.dark_theme;}
         }else if(err==ESP_OK){
             mono_baseline=false;partials=0;
             art_store_result_t loaded=art_store_load(&store,buffer,ART_FRAME_PACKET_BYTES);
@@ -100,7 +101,7 @@ static void display_worker(void *arg)
                 err=uc8179_init_gray4(panel);
                 if(err==ESP_OK)err=uc8179_display_gray4(panel,buffer+ART_FRAME_HEADER_BYTES,ART_FRAME_PIXEL_BYTES);
             }else if(loaded==ART_STORE_EMPTY){
-                if(!home_ui_render_empty_art(buffer,HOME_UI_BYTES))err=ESP_ERR_INVALID_ARG;
+                if(!home_ui_render_empty_art_panel(buffer,HOME_UI_BYTES))err=ESP_ERR_INVALID_ARG;
                 if(err==ESP_OK)err=uc8179_init(panel);
                 if(err==ESP_OK)err=uc8179_display_frame(panel,buffer,HOME_UI_BYTES);
             }else err=ESP_FAIL;
@@ -286,6 +287,18 @@ void art_manager_home_update(const home_live_data_t *data)
         home_ui_set_live(&ui,live);
         if(ui.active){pending=true;notify=true;if(state.display!=ART_DISPLAY_BUSY)state.display=ART_DISPLAY_QUEUED;}
         publish_ui();
+    }
+    portEXIT_CRITICAL(&status_lock);
+    if(notify&&worker)xTaskNotifyGive(worker);
+}
+
+void art_manager_set_dark_theme(bool dark)
+{
+    bool notify=false;
+    portENTER_CRITICAL(&status_lock);
+    if(state.storage_ready&&ui.dark_theme!=dark){
+        home_ui_set_dark_theme(&ui,dark);publish_ui();
+        if(ui.active){pending=true;notify=true;if(state.display!=ART_DISPLAY_BUSY)state.display=ART_DISPLAY_QUEUED;}
     }
     portEXIT_CRITICAL(&status_lock);
     if(notify&&worker)xTaskNotifyGive(worker);

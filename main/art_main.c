@@ -17,6 +17,7 @@
 #include "heartbeat.h"
 #include "home_ui.h"
 #include "nvs_flash.h"
+#include "nvs.h"
 #include "home_network.h"
 #include "home_backend.h"
 #include "esp_psram.h"
@@ -77,6 +78,33 @@ static void setup_touch(void)
     if(touch)gt911_get_native_resolution(touch,&touch_width,&touch_height);
 }
 
+static bool saved_dark_theme;
+static int64_t next_theme_save;
+static void restore_theme(void)
+{
+    nvs_handle_t handle;uint8_t dark=0;
+    esp_err_t err=nvs_open("panel_ui",NVS_READONLY,&handle);
+    if(err==ESP_OK){err=nvs_get_u8(handle,"dark",&dark);nvs_close(handle);}
+    if(err!=ESP_OK&&err!=ESP_ERR_NVS_NOT_FOUND)ESP_LOGW(TAG,"Theme load: %s",esp_err_to_name(err));
+    saved_dark_theme=err==ESP_OK&&dark==1;
+    art_manager_set_dark_theme(saved_dark_theme);
+}
+static void persist_theme(int64_t now)
+{
+    art_manager_status_t s;art_manager_status(&s);
+    if(s.dark_theme==saved_dark_theme||now<next_theme_save||s.uploading||
+       s.display!=ART_DISPLAY_READY||s.ui_revision!=s.ui_shown_revision)return;
+    next_theme_save=now+INT64_C(10000000);
+    nvs_handle_t handle;esp_err_t err=nvs_open("panel_ui",NVS_READWRITE,&handle);
+    if(err==ESP_OK){
+        err=nvs_set_u8(handle,"dark",s.dark_theme?1:0);
+        if(err==ESP_OK)err=nvs_commit(handle);
+        nvs_close(handle);
+    }
+    if(err==ESP_OK){saved_dark_theme=s.dark_theme;next_theme_save=0;ESP_LOGI(TAG,"UI theme saved: %s",saved_dark_theme?"dark":"light");}
+    else ESP_LOGW(TAG,"Theme save: %s",esp_err_to_name(err));
+}
+
 static void print_setup(void)
 {
     home_network_status_t net;home_network_status(&net);
@@ -84,7 +112,7 @@ static void print_setup(void)
     ESP_LOGI(TAG,"Home connected=%d clock=%d IP=%s",net.connected,net.time_ready,net.ip);
     ESP_LOGI(TAG,"Wi-Fi: open network, no password");
     ESP_LOGI(TAG,"Photo page: http://192.168.4.1 (stay connected without Internet)");
-    ESP_LOGI(TAG,"UI: first touch opens home / 45 s idle returns photo / h menu | a art | l login | p poll | d logout | t map");
+    ESP_LOGI(TAG,"UI: first touch opens home / 45 s idle returns photo / h menu | a art | l login | p poll | d logout | i theme | t map");
 }
 
 void app_main(void)
@@ -116,6 +144,7 @@ void app_main(void)
     esp_err_t network = home_network_start();
     report("Wi-Fi AP + home STA",network);
     if (network == ESP_OK) {
+        restore_theme();
         print_setup();
         report("Photo HTTP server",art_http_start());
         esp_err_t backend=live_model==ESP_OK?home_backend_start(art_manager_home_update):live_model;
@@ -125,7 +154,7 @@ void app_main(void)
             if(failed){failed->epoch=1;snprintf(failed->message,sizeof(failed->message),"Yandex backend unavailable. Check PSRAM/UART");art_manager_home_update(failed);heap_caps_free(failed);}
         }
     }
-    ESP_LOGI(TAG,"ART UI READY / Yandex live home / 45 s return / UART ? h a t / photo upload has no cooldown");
+    ESP_LOGI(TAG,"ART UI READY / QR1 THEMES1 / Yandex live home / 45 s return / UART ? h a i t / photo upload has no cooldown");
     int64_t last_live=0,last_touch=0;
     for (;;) {
         char command;
@@ -137,6 +166,10 @@ void app_main(void)
                 home_command_t c={.kind=command=='l'?HOME_CMD_LOGIN:command=='d'?HOME_CMD_LOGOUT:HOME_CMD_REFRESH};
                 ESP_LOGI(TAG,"Home request queued=%d",home_backend_submit(&c));
                 if(command=='l')art_manager_open_menu();
+            }
+            else if(command=='i'){
+                art_manager_status_t status;art_manager_status(&status);
+                art_manager_set_dark_theme(!status.dark_theme);
             }
             else if(command=='t'){
                 touch_map=(touch_map+1)%8;art_manager_cancel_touch();
@@ -159,6 +192,7 @@ void app_main(void)
                 }
             }
         }
+        if(network==ESP_OK)persist_theme(now);
         if (now-last_live>=10000000) {
             art_manager_status_t s;
             art_manager_status(&s);

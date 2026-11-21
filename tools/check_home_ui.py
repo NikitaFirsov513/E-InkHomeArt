@@ -9,14 +9,14 @@ from preview_diagnostics import png
 root=Path(__file__).resolve().parents[1]
 out=root/'build/host-ui';out.mkdir(parents=True,exist_ok=True)
 sources=['tests/host/home_ui_test.c','components/home_ui/home_ui.c',
-         'components/home_ui/home_ui_render.c','components/home_ui/home_ui_font.c']
+         'components/home_ui/home_ui_render.c','components/home_ui/home_ui_font.c','components/home_ui/vendor/qrcodegen/qrcodegen.c']
 cmd=[str(find_clang()),'-std=c11','-O2','-Wall','-Wextra','-Werror',
      '-I'+str(root/'components/home_ui/include'),*[str(root/p) for p in sources]]
 exe=out/('home-ui-test.exe' if os.name=='nt' else 'home-ui-test')
 subprocess.run([*cmd,'-o',str(exe)],check=True)
 subprocess.run([str(exe)],check=True)
 libpath=out/('home-ui.dll' if os.name=='nt' else 'home-ui.so')
-link=['-Wl,/EXPORT:home_ui_test_preview','-Wl,/EXPORT:home_ui_live_preview'] if os.name=='nt' else ['-fPIC']
+link=['-Wl,/EXPORT:home_ui_test_preview','-Wl,/EXPORT:home_ui_live_preview','-Wl,/EXPORT:home_ui_login_preview','-Wl,/EXPORT:home_ui_login_theme_preview'] if os.name=='nt' else ['-fPIC']
 subprocess.run([*cmd,'-shared',*link,'-o',str(libpath)],check=True)
 lib=ct.CDLL(str(libpath));render=lib.home_ui_test_preview
 render.argtypes=[ct.c_uint,ct.POINTER(ct.c_uint8),ct.c_size_t];render.restype=ct.c_bool
@@ -30,3 +30,9 @@ live.argtypes=render.argtypes;live.restype=ct.c_bool
 for page,name in enumerate(['home','rooms','room','scenes','device','settings']):
     frame=(ct.c_uint8*48000)();assert live(page,frame,48000),name
     png(out/('live-'+name+'.png'),bytes(frame))
+
+login=lib.home_ui_login_theme_preview
+login.argtypes=[ct.c_char_p,ct.c_bool,ct.POINTER(ct.c_uint8),ct.c_size_t];login.restype=ct.c_bool
+for dark in [False,True]:
+    frame=(ct.c_uint8*48000)();assert login(b'https://oauth.yandex.ru/device',dark,frame,48000)
+    png(out/('login-'+('dark' if dark else 'light')+'.png'),bytes(b^255 for b in frame))

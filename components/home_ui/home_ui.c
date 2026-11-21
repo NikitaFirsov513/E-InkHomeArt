@@ -18,6 +18,11 @@ static void changed(home_ui_t *u)
     u->pressed=false;
 }
 
+void home_ui_set_dark_theme(home_ui_t *u,bool dark)
+{
+    if(u&&u->dark_theme!=dark){u->dark_theme=dark;changed(u);}
+}
+
 void home_ui_show_art(home_ui_t *u)
 {
     if(!u)return;
@@ -51,7 +56,7 @@ static void open_device(home_ui_t *u,unsigned device)
 }
 
 enum { LIVE_OPEN=100,LIVE_TOGGLE=140,LIVE_ROOM=180,LIVE_SCENE=200,
-       LIVE_PREV=230,LIVE_NEXT,LIVE_LOGIN,LIVE_CANCEL,LIVE_LOGOUT,LIVE_REFRESH };
+       LIVE_PREV=230,LIVE_NEXT,LIVE_LOGIN,LIVE_CANCEL,LIVE_LOGOUT,LIVE_REFRESH,LIVE_THEME };
 
 void home_ui_set_live(home_ui_t *u,const home_live_data_t *data)
 {
@@ -99,6 +104,7 @@ static void live_action(home_ui_t *u,unsigned a)
     else if(a==LIVE_CANCEL)c.kind=HOME_CMD_CANCEL;
     else if(a==LIVE_LOGOUT)c.kind=HOME_CMD_LOGOUT;
     else if(a==LIVE_REFRESH)c.kind=HOME_CMD_REFRESH;
+    else if(a==LIVE_THEME)u->dark_theme=!u->dark_theme;
     else if(a>=LIVE_SCENE&&a<LIVE_SCENE+HOME_MAX_SCENES){c.kind=HOME_CMD_SCENE;c.slot=a-LIVE_SCENE;}
     else if(a>=LIVE_TOGGLE&&a<LIVE_TOGGLE+HOME_MAX_DEVICES){
         c.kind=HOME_CMD_TOGGLE;c.slot=a-LIVE_TOGGLE;
@@ -262,6 +268,7 @@ static unsigned live_controls(const home_ui_t *u,home_ui_control_t *out,unsigned
     bool back=u->page==HOME_PAGE_DEVICE||u->page==HOME_PAGE_ROOM||u->page==HOME_PAGE_SETTINGS;
     add(out,cap,&n,back?BACK:SETTINGS,626,14,150,44,back?"Назад":"Настройки",false);
     if(u->page==HOME_PAGE_SETTINGS){
+        add(out,cap,&n,LIVE_THEME,340,326,180,48,u->dark_theme?"Светлая тема":"Тёмная тема",false);
         if(l->waiting)add(out,cap,&n,LIVE_CANCEL,24,326,216,48,"Отменить",false);
         else if(!l->authorized)add(out,cap,&n,LIVE_LOGIN,24,326,300,48,"Войти в Яндекс",true);
         else {add(out,cap,&n,LIVE_REFRESH,24,326,300,48,"Обновить устройства",false);add(out,cap,&n,LIVE_LOGOUT,548,326,216,48,"Выйти",false);}

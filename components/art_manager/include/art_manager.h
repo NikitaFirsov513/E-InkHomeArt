@@ -14,7 +14,7 @@ typedef struct {
     art_display_state_t display;
     esp_err_t display_error;
     art_store_result_t store_error;
-    bool menu_visible,menu_requested;
+    bool menu_visible,menu_requested,dark_theme;
     uint32_t ui_revision,ui_shown_revision;
 } art_manager_status_t;
 
@@ -39,3 +39,5 @@ void art_manager_show_art(void);
  * Callback queues only and runs outside the UI spinlock. */
 esp_err_t art_manager_enable_home(bool (*submit)(const home_command_t *));
 void art_manager_home_update(const home_live_data_t *data);
+
+void art_manager_set_dark_theme(bool dark);

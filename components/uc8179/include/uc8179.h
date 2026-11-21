@@ -46,6 +46,7 @@ esp_err_t uc8179_init_gray4(uc8179_handle_t device);
 esp_err_t uc8179_display_gray4(uc8179_handle_t device, const uint8_t *pixels, size_t length);
 esp_err_t uc8179_wait_idle(uc8179_handle_t device);
 /* Native panel RAM bytes, 1 bpp, MSB first, row-major, exactly 48000 bytes.
+ * Current monochrome CDI DDX=01 uses 1=white, 0=black.
  * No rotation or pixel inversion is applied. Buffer may reside in PSRAM.
  * Polling/task context only; serialize all operations on the device.
  * On transfer/refresh failure call init again before attempting another frame. */

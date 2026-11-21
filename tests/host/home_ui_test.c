@@ -36,6 +36,21 @@ bool home_ui_live_preview(unsigned page,uint8_t *frame,size_t n)
     if(page==HOME_PAGE_SETTINGS){l.authorized=false;l.waiting=true;strcpy(l.code,"123-456");strcpy(l.url,"https://oauth.yandex.ru/device");strcpy(l.message,"Ожидаем подтверждение на телефоне");}
     return home_ui_render(frame,n,&u);
 }
+bool home_ui_login_preview(const char *url,uint8_t *frame,size_t n)
+{
+    home_ui_t u;home_ui_init(&u);static home_live_data_t l;live_fixture(&l);
+    l.authorized=false;l.waiting=true;strcpy(l.code,"123-456");snprintf(l.url,sizeof(l.url),"%s",url);
+    home_ui_set_live(&u,&l);u.active=true;u.page=HOME_PAGE_SETTINGS;
+    return home_ui_render(frame,n,&u);
+}
+/* Native bytes sent to the controller, not the logical preview bitmap. */
+bool home_ui_login_theme_preview(const char *url,bool dark,uint8_t *frame,size_t n)
+{
+    home_ui_t u;home_ui_init(&u);static home_live_data_t l;live_fixture(&l);
+    l.authorized=false;l.waiting=true;strcpy(l.code,"123-456");snprintf(l.url,sizeof(l.url),"%s",url);
+    home_ui_set_live(&u,&l);u.active=true;u.page=HOME_PAGE_SETTINGS;home_ui_set_dark_theme(&u,dark);
+    return home_ui_render_panel(frame,n,&u);
+}
 static void live_tests(void)
 {
     home_ui_t u;home_ui_init(&u);static home_live_data_t l;live_fixture(&l);home_ui_set_live(&u,&l);home_ui_open_menu(&u,0);shown(&u,0);
@@ -51,9 +66,35 @@ static void live_tests(void)
     l.pending=false;l.online=false;home_ui_set_live(&u,&l);shown(&u,12000);assert(home_ui_controls(&u,controls,24)==5);
     static uint8_t guarded[HOME_UI_BYTES+2];
     for(unsigned page=0;page<6;++page){memset(guarded,0xa5,sizeof(guarded));assert(home_ui_live_preview(page,guarded+1,HOME_UI_BYTES));assert(guarded[0]==0xa5&&guarded[sizeof(guarded)-1]==0xa5);}
+    /* Four module quiet zone must survive the complete page layout. */
+    assert(home_ui_login_preview("https://ya.ru/device",guarded+1,HOME_UI_BYTES));
+    unsigned black=0;
+    for(unsigned y=132;y<372;++y)for(unsigned x=532;x<772;++x){
+        bool pixel=(guarded[1+y*100+x/8]&(128U>>(x&7)))!=0;
+        if(x<544||x>=760||y<144||y>=360)assert(!pixel);
+        if(pixel)++black;
+    }
+    assert(black>1000);
+    assert(home_ui_login_preview("",guarded+1,HOME_UI_BYTES));
+    char long_url[256];memset(long_url,'a',sizeof(long_url));long_url[255]=0;
+    assert(home_ui_login_preview(long_url,guarded+1,HOME_UI_BYTES)); // Unencodable URI retains manual fallback.
     home_ui_init(&u);memset(&l,0,sizeof(l));home_ui_set_live(&u,&l);home_ui_open_menu(&u,0);shown(&u,0);
     assert(tap(&u,400,250,1000)&&u.page==HOME_PAGE_SETTINGS);shown(&u,2000);
     assert(tap(&u,120,350,3000)&&u.command.kind==HOME_CMD_LOGIN);
+    u.command.kind=HOME_CMD_NONE;shown(&u,4000);
+    assert(tap(&u,400,350,5000)&&u.dark_theme&&u.command.kind==HOME_CMD_NONE);shown(&u,6000);
+    assert(tap(&u,400,350,7000)&&!u.dark_theme);shown(&u,8000);
+    assert(home_ui_render_panel(guarded+1,HOME_UI_BYTES,&u)&&guarded[1]==0xff); // Native white background.
+    home_ui_set_dark_theme(&u,true);
+    assert(home_ui_render_panel(guarded+1,HOME_UI_BYTES,&u)&&guarded[1]==0); // Explicit dark theme.
+    assert(home_ui_render_empty_art_panel(guarded+1,HOME_UI_BYTES)&&guarded[1]==0xff);
+    for(unsigned dark=0;dark<2;++dark){
+        assert(home_ui_login_theme_preview("https://ya.ru/device",dark,guarded+1,HOME_UI_BYTES));
+        assert(guarded[1]==(dark?0:0xff));
+        for(unsigned y=132;y<372;++y)for(unsigned x=532;x<772;++x)
+            if(x<544||x>=760||y<144||y>=360)assert(guarded[1+y*100+x/8]&(128U>>(x&7)));
+        assert(guarded[0]==0xa5&&guarded[sizeof(guarded)-1]==0xa5);
+    }
     puts("PASS: live UI pagination, actual device indices, queued non-optimistic toggle/range, offline/pending controls, login and clipped external names.");
 }
 int main(void)
