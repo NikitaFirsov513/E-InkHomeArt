@@ -27,3 +27,5 @@ subprocess.run([str(find_clang()), '-std=gnu11', '-O2', '-Wall', '-Wextra', '-We
 subprocess.run([str(manager)], check=True)
 subprocess.run([str(manager), 'restore'], check=True)
 subprocess.run([str(manager), 'ui'], check=True)
+
+subprocess.run([str(manager), 'home'], check=True)

@@ -20,7 +20,7 @@ static art_store_io_t io;
 const char *esp_err_to_name(esp_err_t err) { return err==ESP_OK?"ESP_OK":"ESP_FAIL"; }
 int64_t esp_timer_get_time(void) { return now; }
 void *heap_caps_malloc(size_t n,unsigned caps)
-{ assert(n==ART_FRAME_PACKET_BYTES&&caps==(MALLOC_CAP_8BIT|MALLOC_CAP_INTERNAL));return calloc(1,n); }
+{ assert((n==ART_FRAME_PACKET_BYTES&&caps==(MALLOC_CAP_8BIT|MALLOC_CAP_INTERNAL))||(n==sizeof(home_live_data_t)&&caps==MALLOC_CAP_8BIT));return calloc(1,n); }
 SemaphoreHandle_t xSemaphoreCreateMutex(void) { return (void *)10; }
 int xSemaphoreTake(SemaphoreHandle_t s,TickType_t timeout)
 { (void)s;assert(!timeout);if(mutex_owner)return pdFALSE;mutex_owner=current_task;return pdTRUE; }
@@ -74,17 +74,37 @@ static art_store_result_t upload(void)
     uint8_t *lease;assert(art_manager_begin_upload(&lease)==ESP_OK);
     memcpy(lease,packet,sizeof(packet));return art_manager_commit_upload(sizeof(packet));
 }
+static home_command_t home_command;
+static unsigned home_submits;
+static bool submit_home(const home_command_t *c){home_command=*c;++home_submits;return true;}
 int main(int argc,char **argv)
 {
     memset(flash,255,sizeof(flash));memset(pixels,0x1b,sizeof(pixels));
     io=(art_store_io_t){.size=sizeof(flash),.read=read_bytes,.write=write_bytes,.erase=erase_bytes};
     assert(art_frame_encode(packet,sizeof(packet),pixels,sizeof(pixels))==ART_FRAME_OK);
-    if(argc>1&&(!strcmp(argv[1],"restore")||!strcmp(argv[1],"ui"))) {
+    if(argc>1&&(!strcmp(argv[1],"restore")||!strcmp(argv[1],"ui")||!strcmp(argv[1],"home"))) {
         art_store_t initial;assert(art_store_open(&initial,&io)==ART_STORE_EMPTY);
         assert(art_store_save(&initial,packet,sizeof(packet))==ART_STORE_OK);
         assert(art_manager_start((void *)3)==ESP_OK);run_worker_once();
         art_manager_status_t s;art_manager_status(&s);
         assert(s.has_frame&&s.saved_generation==1&&s.displayed_generation==1&&refreshes==1);
+        if(!strcmp(argv[1],"home")){
+            assert(art_manager_enable_home(submit_home)==ESP_OK);
+            static home_live_data_t live;live.epoch=2;live.online=live.time_ready=live.authorized=live.loaded=true;
+            live.device_count=1;live.devices[0].available=live.devices[0].has_toggle=true;
+            snprintf(live.devices[0].name,sizeof(live.devices[0].name),"Real lamp");
+            snprintf(live.devices[0].state,sizeof(live.devices[0].state),"OFF");
+            art_manager_home_update(&live);art_manager_open_menu();run_worker_once();assert(mono_full==1);
+            art_manager_touch(1,100,200,0,now);art_manager_touch(0,-1,-1,0,now);
+            assert(home_submits==1&&home_command.kind==HOME_CMD_TOGGLE&&home_command.epoch==2&&home_command.slot==0&&home_command.value==1);
+            run_worker_once();assert(mono_partial==0); // A queued command has not changed actual lamp state.
+            live.pending=true;art_manager_home_update(&live);run_worker_once();assert(mono_partial==1);
+            art_manager_home_update(&live);run_worker_once();assert(mono_partial==1); // Identical poll never redraws.
+            live.pending=false;live.devices[0].on=true;snprintf(live.devices[0].state,sizeof(live.devices[0].state),"ON");
+            art_manager_home_update(&live);run_worker_once();assert(mono_partial==2);
+            now+=45000000;run_worker_once();art_manager_status(&s);assert(!s.menu_visible&&s.displayed_generation==1&&refreshes==2);
+            puts("PASS: actual ArtManager live snapshots, queued command without fake state, pending/confirmed partials, unchanged poll suppression and same-photo return.");return 0;
+        }
         if(!strcmp(argv[1],"ui")){
             release_during_mono=true;art_manager_touch(1,100,200,0,now);run_worker_once();
             art_manager_status(&s);assert(s.menu_visible&&mono_full==1&&refreshes==1);

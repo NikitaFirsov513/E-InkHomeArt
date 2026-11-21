@@ -1,3 +1,4 @@
+#define _CRT_SECURE_NO_WARNINGS
 #include "home_ui.h"
 #include <assert.h>
 #include <stdio.h>
@@ -16,8 +17,48 @@ static bool tap(home_ui_t *u,int x,int y,int64_t now)
     home_ui_touch(u,1,x,y,0,now);
     return home_ui_touch(u,0,-1,-1,0,now+1000);
 }
+static void live_fixture(home_live_data_t *l)
+{
+    memset(l,0,sizeof(*l));l->epoch=7;l->online=l->time_ready=l->authorized=l->loaded=true;
+    l->device_count=8;l->room_count=2;l->scene_count=1;
+    strcpy(l->message,"Устройства обновлены");strcpy(l->ip,"192.168.1.25");
+    strcpy(l->rooms[0].name,"Гостиная");strcpy(l->rooms[1].name,"Кухня");strcpy(l->scenes[0].name,"Вечер");
+    for(unsigned i=0;i<8;++i){
+        home_live_device_t *d=&l->devices[i];snprintf(d->name,sizeof(d->name),"Свет %u / очень длинное название",i+1);
+        strcpy(d->state,"Выключено / 40");strcpy(d->range_name,"Яркость");d->available=d->has_toggle=d->has_range=true;
+        d->minimum=1;d->maximum=100;d->step=1;d->value=40;d->room=i%2;
+    }
+}
+bool home_ui_live_preview(unsigned page,uint8_t *frame,size_t n)
+{
+    home_ui_t u;home_ui_init(&u);static home_live_data_t l;live_fixture(&l);home_ui_set_live(&u,&l);u.active=true;
+    u.page=(home_ui_page_t)page;u.live_draft=40;
+    if(page==HOME_PAGE_SETTINGS){l.authorized=false;l.waiting=true;strcpy(l.code,"123-456");strcpy(l.url,"https://oauth.yandex.ru/device");strcpy(l.message,"Ожидаем подтверждение на телефоне");}
+    return home_ui_render(frame,n,&u);
+}
+static void live_tests(void)
+{
+    home_ui_t u;home_ui_init(&u);static home_live_data_t l;live_fixture(&l);home_ui_set_live(&u,&l);home_ui_open_menu(&u,0);shown(&u,0);
+    assert(tap(&u,100,200,1000));assert(u.command.kind==HOME_CMD_TOGGLE&&u.command.epoch==7&&u.command.slot==0&&u.command.value==1);
+    assert(!l.devices[0].on);u.command.kind=HOME_CMD_NONE;shown(&u,2000);
+    assert(tap(&u,700,398,3000)&&u.offset==6);shown(&u,4000);
+    assert(tap(&u,100,125,5000)&&u.page==HOME_PAGE_DEVICE&&u.device==6);shown(&u,6000);
+    assert(tap(&u,380,310,7000)&&u.live_draft==41&&l.devices[6].value==40);shown(&u,8000);
+    assert(tap(&u,600,310,9000)&&u.command.kind==HOME_CMD_RANGE&&u.command.slot==6&&u.command.value==41);
+    u.command.kind=HOME_CMD_NONE;shown(&u,10000);
+    l.pending=true;home_ui_set_live(&u,&l);shown(&u,11000);
+    home_ui_control_t controls[24];unsigned count=home_ui_controls(&u,controls,24);assert(count==5);
+    l.pending=false;l.online=false;home_ui_set_live(&u,&l);shown(&u,12000);assert(home_ui_controls(&u,controls,24)==5);
+    static uint8_t guarded[HOME_UI_BYTES+2];
+    for(unsigned page=0;page<6;++page){memset(guarded,0xa5,sizeof(guarded));assert(home_ui_live_preview(page,guarded+1,HOME_UI_BYTES));assert(guarded[0]==0xa5&&guarded[sizeof(guarded)-1]==0xa5);}
+    home_ui_init(&u);memset(&l,0,sizeof(l));home_ui_set_live(&u,&l);home_ui_open_menu(&u,0);shown(&u,0);
+    assert(tap(&u,400,250,1000)&&u.page==HOME_PAGE_SETTINGS);shown(&u,2000);
+    assert(tap(&u,120,350,3000)&&u.command.kind==HOME_CMD_LOGIN);
+    puts("PASS: live UI pagination, actual device indices, queued non-optimistic toggle/range, offline/pending controls, login and clipped external names.");
+}
 int main(void)
 {
+    live_tests();
     home_ui_t u;home_ui_init(&u);
     assert(!u.active&&u.light_on[0]);
     assert(home_ui_touch(&u,1,100,200,0,1000)&&u.active&&u.light_on[0]);

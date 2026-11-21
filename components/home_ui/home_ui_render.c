@@ -67,9 +67,89 @@ static bool device_card(uint8_t *f,const home_ui_t *u,unsigned d,int x,int y)
     return text(f,x+14,y+40,value,&home_font_18,true,212)&&ok;
 }
 
+/* Clip external names instead of rejecting a complete frame. */
+static bool fit(uint8_t *f,int x,int y,const char *s,const home_font_t *font,bool black,int width)
+{
+    char clipped[256];size_t n=0;int used=0;
+    while(*s&&n+5<sizeof(clipped)){
+        const char *start=s;unsigned cp=utf8(&s);
+        const home_font_glyph_t *g=glyph(font,cp);
+        if(!g)g=glyph(font,'?');
+        if(!g)continue;
+        if(used+g->width>width-18){memcpy(clipped+n,"...",3);n+=3;break;}
+        if(g->code==cp){size_t bytes=(size_t)(s-start);memcpy(clipped+n,start,bytes);n+=bytes;}
+        else clipped[n++]='?';
+        used+=g->width;
+    }
+    clipped[n]=0;return text(f,x,y,clipped,font,black,width);
+}
+static bool live_render(uint8_t *f,size_t length,const home_ui_t *u)
+{
+    if(length!=HOME_UI_BYTES||!u->live)return false;
+    const home_live_data_t *l=u->live;memset(f,0,length);bool ok=true;
+    const char *title=u->page==HOME_PAGE_HOME?"Мой дом":u->page==HOME_PAGE_ROOMS?"Комнаты":u->page==HOME_PAGE_SCENES?"Сценарии":
+        u->page==HOME_PAGE_ROOM&&u->room<l->room_count?l->rooms[u->room].name:
+        u->page==HOME_PAGE_DEVICE&&u->device<l->device_count?l->devices[u->device].name:"Настройки";
+    ok&=fit(f,24,8,title,&home_font_28,true,450);
+    ok&=text(f,510,20,l->online?"Wi-Fi":"OFFLINE",&home_font_18,true,106);
+    rect(f,24,64,752,1,true);rect(f,0,420,800,2,true);
+    const char *status=l->pending?"Отправка команды...":!l->online?"Нет домашней сети":!l->time_ready?"Синхронизация времени для HTTPS":l->message;
+    ok&=fit(f,24,72,status,&home_font_18,true,752);
+    if(u->page==HOME_PAGE_SETTINGS){
+        char line[128];snprintf(line,sizeof(line),"Домашняя сеть: %s",l->ip[0]?l->ip:"нет подключения");
+        ok&=fit(f,24,114,line,&home_font_20,true,752);
+        if(l->waiting){
+            ok&=text(f,24,160,"Откройте на телефоне:",&home_font_20,true,752);
+            ok&=fit(f,24,200,l->url,&home_font_20,true,752);
+            snprintf(line,sizeof(line),"Код: %s",l->code);ok&=fit(f,24,244,line,&home_font_28,true,752);
+        }else{
+            ok&=text(f,24,172,l->authorized?"Яндекс: аккаунт подключён":"Яндекс: требуется вход",&home_font_20,true,752);
+            ok&=text(f,24,228,"Фото: http://192.168.4.1",&home_font_20,true,752);
+            ok&=text(f,24,278,"Возврат к картине через 45 секунд",&home_font_20,true,752);
+        }
+    }else if(!l->authorized){
+        ok&=text(f,80,152,"Подключите свой умный дом",&home_font_28,true,650);
+        ok&=text(f,80,310,"Вход подтверждается на телефоне",&home_font_20,true,650);
+    }else if(u->page==HOME_PAGE_HOME||u->page==HOME_PAGE_ROOM){
+        unsigned slots[6],n=home_live_slots(u,slots);
+        for(unsigned i=0;i<n;++i){
+            const home_live_device_t *d=&l->devices[slots[i]];
+            int x=24+256*(int)(i%3),y=104+140*(int)(i/3);box(f,x,y,240,130);
+            ok&=fit(f,x+12,y+7,d->name,&home_font_20,true,216);
+            ok&=fit(f,x+12,y+39,d->available?d->state:"Недоступно",&home_font_18,true,216);
+        }
+        if(!n)ok&=text(f,48,170,l->loaded?"В этом разделе нет устройств":"Загружаем устройства...",&home_font_20,true,704);
+    }else if(u->page==HOME_PAGE_DEVICE&&u->device<l->device_count){
+        const home_live_device_t *d=&l->devices[u->device];
+        ok&=fit(f,48,128,d->available?d->state:"Недоступно",&home_font_20,true,350);
+        if(d->has_range){
+            char value[48];snprintf(value,sizeof(value),"%g",u->live_draft);
+            ok&=fit(f,48,218,d->range_name,&home_font_20,true,704);
+            ok&=fit(f,176,292,value,&home_font_28,true,144);
+        }else ok&=text(f,48,242,d->has_toggle?"Управление питанием":"Пока только просмотр",&home_font_20,true,704);
+        ok&=text(f,48,366,"Состояние подтверждается ответом Яндекса",&home_font_18,true,704);
+    }else if(u->page==HOME_PAGE_ROOMS||u->page==HOME_PAGE_SCENES){
+        unsigned count=u->page==HOME_PAGE_ROOMS?l->room_count:l->scene_count;
+        if(!count)ok&=text(f,48,170,u->page==HOME_PAGE_ROOMS?"Комнаты не найдены":"Сценарии не найдены",&home_font_20,true,704);
+    }
+    if(u->page!=HOME_PAGE_DEVICE){
+        char count[100];snprintf(count,sizeof(count),"Устройств: %u   Комнат: %u   Сценариев: %u%s",l->device_count,l->room_count,l->scene_count,l->truncated?" +":"");
+        ok&=fit(f,156,388,count,&home_font_18,true,488);
+    }
+    home_ui_control_t controls[24];unsigned n=home_ui_controls(u,controls,24);
+    for(unsigned i=0;i<n;++i){
+        const home_ui_control_t *c=&controls[i];if(!c->label)continue;
+        rect(f,c->x,c->y,c->w,c->h,c->filled);box(f,c->x,c->y,c->w,c->h);
+        ok&=fit(f,c->x+10,c->y+(c->h-home_font_20.height)/2,c->label,&home_font_20,!c->filled,c->w-20);
+    }
+    return ok;
+}
+
 bool home_ui_render(uint8_t *f,size_t length,const home_ui_t *u)
 {
-    if(!f||!u||length!=HOME_UI_BYTES||u->room>2||u->device>3||u->page>HOME_PAGE_SETTINGS)return false;
+    if(!f||!u||length!=HOME_UI_BYTES||u->page>HOME_PAGE_SETTINGS)return false;
+    if(u->live)return live_render(f,length,u);
+    if(u->room>2||u->device>3)return false;
     memset(f,0,length);bool ok=true;
     static const char *rooms[]={"Гостиная","Кухня","Спальня"};
     const char *title=u->page==HOME_PAGE_HOME?"Мой дом":u->page==HOME_PAGE_ROOMS?"Комнаты":

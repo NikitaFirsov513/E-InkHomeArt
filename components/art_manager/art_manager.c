@@ -1,6 +1,8 @@
 #include "art_manager.h"
 #include <inttypes.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -21,6 +23,8 @@ static portMUX_TYPE status_lock = portMUX_INITIALIZER_UNLOCKED;
 static art_manager_status_t state;
 static bool pending;
 static home_ui_t ui;
+static home_live_data_t *live,*render_live;
+static bool (*submit_home)(const home_command_t *);
 static bool mono_baseline;
 static unsigned partials;
 /* Keep the prototype's previously exercised 30-partial UI budget.
@@ -58,6 +62,7 @@ static void display_worker(void *arg)
         uint32_t generation = store.generation;
         portENTER_CRITICAL(&status_lock);
         home_ui_t requested=ui;
+        if(live&&render_live){*render_live=*live;requested.live=render_live;}
         pending = false;
         state.display = ART_DISPLAY_BUSY;
         portEXIT_CRITICAL(&status_lock);
@@ -224,7 +229,14 @@ void art_manager_touch(unsigned count,int x,int y,unsigned id,int64_t now)
     else if(home_ui_touch(&ui,count,x,y,id,now)){
         pending=true;state.display=ART_DISPLAY_QUEUED;dirty=true;publish_ui();
     }
+    home_command_t command=ui.command;ui.command.kind=HOME_CMD_NONE;
     portEXIT_CRITICAL(&status_lock);
+    if(command.kind!=HOME_CMD_NONE&&submit_home&&!submit_home(&command)){
+        home_live_data_t *data=live;
+        if(data){portENTER_CRITICAL(&status_lock);
+            snprintf(data->message,sizeof(data->message),"Подождите завершения запроса");
+            ++ui.revision;pending=ui.active;publish_ui();portEXIT_CRITICAL(&status_lock);}
+    }
     if(dirty&&worker)xTaskNotifyGive(worker);
 }
 
@@ -249,4 +261,32 @@ void art_manager_show_art(void)
     if(ready){home_ui_show_art(&ui);pending=true;state.display=ART_DISPLAY_QUEUED;publish_ui();}
     portEXIT_CRITICAL(&status_lock);
     if(ready&&worker)xTaskNotifyGive(worker);
+}
+
+esp_err_t art_manager_enable_home(bool (*submit)(const home_command_t *))
+{
+    if(live)return ESP_ERR_INVALID_STATE;
+    home_live_data_t *model=heap_caps_malloc(sizeof(*model),MALLOC_CAP_8BIT);
+    home_live_data_t *snapshot=heap_caps_malloc(sizeof(*snapshot),MALLOC_CAP_8BIT);
+    if(!model||!snapshot){free(model);free(snapshot);return ESP_ERR_NO_MEM;}
+    memset(model,0,sizeof(*model));model->epoch=1;
+    snprintf(model->message,sizeof(model->message),"Войдите в Яндекс в настройках");
+    portENTER_CRITICAL(&status_lock);live=model;render_live=snapshot;submit_home=submit;home_ui_set_live(&ui,live);publish_ui();portEXIT_CRITICAL(&status_lock);
+    return ESP_OK;
+}
+void art_manager_home_update(const home_live_data_t *data)
+{
+    if(!data||!live)return;
+    bool notify=false;
+    portENTER_CRITICAL(&status_lock);
+    if(memcmp(live,data,sizeof(*live))){
+        bool reset=live->epoch!=data->epoch;
+        *live=*data;
+        if(reset)ui.live=NULL;
+        home_ui_set_live(&ui,live);
+        if(ui.active){pending=true;notify=true;if(state.display!=ART_DISPLAY_BUSY)state.display=ART_DISPLAY_QUEUED;}
+        publish_ui();
+    }
+    portEXIT_CRITICAL(&status_lock);
+    if(notify&&worker)xTaskNotifyGive(worker);
 }

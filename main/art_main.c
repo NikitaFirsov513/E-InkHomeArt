@@ -17,13 +17,15 @@
 #include "heartbeat.h"
 #include "home_ui.h"
 #include "nvs_flash.h"
+#include "home_network.h"
+#include "home_backend.h"
+#include "esp_psram.h"
 
 #if !CONFIG_ESP_CONSOLE_UART_DEFAULT
 #error "Art MVP uses UART0 TX43/RX44 for setup details."
 #endif
 
 static const char *TAG = "ART_APP";
-static char ap_ssid[33];
 static gt911_handle_t touch;
 static uint16_t touch_width,touch_height;
 static unsigned touch_map;
@@ -75,38 +77,14 @@ static void setup_touch(void)
     if(touch)gt911_get_native_resolution(touch,&touch_width,&touch_height);
 }
 
-static esp_err_t setup_ap(void)
-{
-    /* Preserve NVS on initialization errors. Never erase user data to fix Wi-Fi. */
-    esp_err_t err = nvs_flash_init();
-    if (err != ESP_OK) return err;
-    err = esp_netif_init();
-    if (err == ESP_OK) err = esp_event_loop_create_default();
-    if (err != ESP_OK) return err;
-    if (!esp_netif_create_default_wifi_ap()) return ESP_ERR_NO_MEM;
-    wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
-    err = esp_wifi_init(&init);
-    if (err != ESP_OK) return err;
-    uint8_t mac[6];
-    err = esp_read_mac(mac,ESP_MAC_WIFI_SOFTAP);
-    if (err != ESP_OK) return err;
-    snprintf(ap_ssid,sizeof(ap_ssid),"EInkHomeArt-%02X%02X%02X",mac[3],mac[4],mac[5]);
-    wifi_config_t config = {.ap={.channel=1,.authmode=WIFI_AUTH_OPEN,.max_connection=2}};
-    memcpy(config.ap.ssid,ap_ssid,strlen(ap_ssid));
-    config.ap.ssid_len = (uint8_t)strlen(ap_ssid);
-    err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
-    if (err == ESP_OK) err = esp_wifi_set_mode(WIFI_MODE_AP);
-    if (err == ESP_OK) err = esp_wifi_set_config(WIFI_IF_AP,&config);
-    if (err == ESP_OK) err = esp_wifi_start();
-    return err;
-}
-
 static void print_setup(void)
 {
-    ESP_LOGI(TAG,"Wi-Fi SSID: %s",ap_ssid);
+    home_network_status_t net;home_network_status(&net);
+    ESP_LOGI(TAG,"Photo AP: %s",net.ap_ssid);
+    ESP_LOGI(TAG,"Home connected=%d clock=%d IP=%s",net.connected,net.time_ready,net.ip);
     ESP_LOGI(TAG,"Wi-Fi: open network, no password");
     ESP_LOGI(TAG,"Photo page: http://192.168.4.1 (stay connected without Internet)");
-    ESP_LOGI(TAG,"UI: first touch opens demo / 45 s idle returns photo / h menu | a art | t touch map");
+    ESP_LOGI(TAG,"UI: first touch opens home / 45 s idle returns photo / h menu | a art | l login | p poll | d logout | t map");
 }
 
 void app_main(void)
@@ -132,20 +110,34 @@ void app_main(void)
     }
     /* Reserve the single packet buffer before Wi-Fi fragments internal RAM. */
     report("ArtManager",art_manager_start(panel));
-    esp_err_t network = setup_ap();
-    report("Wi-Fi SoftAP",network);
+    esp_err_t live_model=art_manager_enable_home(home_backend_submit);
+    report("Live home model",live_model);
+    ESP_LOGI(TAG,"PSRAM initialized=%d size=%u",esp_psram_is_initialized(),(unsigned)esp_psram_get_size());
+    esp_err_t network = home_network_start();
+    report("Wi-Fi AP + home STA",network);
     if (network == ESP_OK) {
         print_setup();
         report("Photo HTTP server",art_http_start());
+        esp_err_t backend=live_model==ESP_OK?home_backend_start(art_manager_home_update):live_model;
+        report("Yandex backend",backend);
+        if(backend!=ESP_OK){
+            home_live_data_t *failed=heap_caps_calloc(1,sizeof(*failed),MALLOC_CAP_8BIT);
+            if(failed){failed->epoch=1;snprintf(failed->message,sizeof(failed->message),"Yandex backend unavailable. Check PSRAM/UART");art_manager_home_update(failed);heap_caps_free(failed);}
+        }
     }
-    ESP_LOGI(TAG,"ART UI READY / home A demo / 45 s return / UART ? h a t / photo upload has no cooldown");
+    ESP_LOGI(TAG,"ART UI READY / Yandex live home / 45 s return / UART ? h a t / photo upload has no cooldown");
     int64_t last_live=0,last_touch=0;
     for (;;) {
         char command;
         if (uart_error == ESP_OK) while (uart_read_bytes(BOARD_DEBUG_UART_PORT,&command,1,0) == 1){
             if(command=='?'&&network==ESP_OK)print_setup();
-            else if(command=='h')art_manager_open_menu();
+            else if(command=='h'&&live_model==ESP_OK)art_manager_open_menu();
             else if(command=='a')art_manager_show_art();
+            else if(command=='l'||command=='p'||command=='d'){
+                home_command_t c={.kind=command=='l'?HOME_CMD_LOGIN:command=='d'?HOME_CMD_LOGOUT:HOME_CMD_REFRESH};
+                ESP_LOGI(TAG,"Home request queued=%d",home_backend_submit(&c));
+                if(command=='l')art_manager_open_menu();
+            }
             else if(command=='t'){
                 touch_map=(touch_map+1)%8;art_manager_cancel_touch();
                 ESP_LOGI(TAG,"Touch map=%u native=%ux%u",touch_map,(unsigned)touch_width,(unsigned)touch_height);
@@ -161,7 +153,7 @@ void app_main(void)
             else if(fresh){
                 int x=-1,y=-1;
                 if(count==1)home_ui_map_touch(points[0].x,points[0].y,touch_width,touch_height,touch_map,&x,&y);
-                art_manager_touch(count,x,y,count?points[0].track_id:0,now);
+                if(live_model==ESP_OK)art_manager_touch(count,x,y,count?points[0].track_id:0,now);
                 if(count&&now-last_touch>=200000){
                     ESP_LOGI(TAG,"TOUCH count=%u x=%d y=%d map=%u",(unsigned)count,x,y,touch_map);last_touch=now;
                 }

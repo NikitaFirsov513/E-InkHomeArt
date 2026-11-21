@@ -15,7 +15,7 @@ endif()
 idf_component_register(SRCS ${app_sources}
                        PRIV_REQUIRES esp_driver_gpio spi_flash esp_psram board uc8179 gt911 lis2dw12 art_store
                                      esp_adc esp_timer esp_driver_uart esp_driver_usb_serial_jtag
-                                     art_manager esp_wifi esp_netif esp_event nvs_flash esp_http_server
+                                     art_manager home_backend esp_wifi esp_netif esp_event nvs_flash esp_http_server
                        INCLUDE_DIRS "")
 
 if(CONFIG_APP_ART)

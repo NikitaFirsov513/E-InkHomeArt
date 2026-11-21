@@ -15,7 +15,7 @@ ELF. В терминале ESP-IDF 6.1, из корня проекта:
 
 ```powershell
 idf.py -B build/art -D SDKCONFIG=sdkconfig.art -D 'SDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.defaults.art' build
-idf.py -B build/art -p COM6 flash monitor
+idf.py -B build/art -p COM7 flash monitor
 ```
 
 При первом переходе на Art нужен полный `flash`, включая таблицу разделов,
@@ -24,7 +24,7 @@ idf.py -B build/art -p COM6 flash monitor
 В UART на 115200 будут строки:
 
 ```text
-ART_APP: Wi-Fi SSID: EInkHomeArt-XXXXXX
+ART_APP: Photo AP: EInkHomeArt-XXXXXX
 ART_APP: Wi-Fi: open network, no password
 ART_APP: Photo page: http://192.168.4.1 (stay connected without Internet)
 ```
@@ -100,7 +100,8 @@ ArtStore использует два слота по 128 КиБ: текущую 
 
 - `ArtManager` — один владелец ArtStore и панели, один буфер 96064 байта,
   отдельная задача отображения. Буфер выделяется во внутренней RAM до Wi-Fi;
-  PSRAM по-прежнему выключена. Мьютекс исключает запись в передаваемый кадр.
+  PSRAM включена для сетевой части; DMA-буферы остаются внутренними. Мьютекс
+  исключает запись в передаваемый кадр.
 - Во время приёма HTTP сохраняет данные только в RAM. При неверном заголовке,
   размере, CRC или тайм-ауте до commit Flash не обновляется. Лимит передачи —
   30 с, чтение небольшими блоками. Отклонённые POST закрывают соединение.
@@ -114,11 +115,11 @@ ArtStore использует два слота по 128 КиБ: текущую 
 - Статические HTML/CSS/JS встроены в приложение, без CDN и внешних сервисов.
 - SoftAP — открытая сеть без пароля по выбору пользователя, 2,4 ГГц,
   максимум два клиента. Wi-Fi в этом MVP остаётся
-  включённым для загрузки. Автоматическое выключение радио, сон ESP32,
-  настройка домашней сети и OAuth относятся к дальнейшим этапам.
+  включённым для загрузки и Яндекса. Автоматическое выключение радио и сон
+  ESP32 относятся к следующему этапу. Домашняя сеть и OAuth уже подключены.
 - Активны панель, GT911, UART0, D6 и радио. ADC, LIS2DW12, управление зарядником
-  и внешняя PSRAM не запускаются. Добавлен [демонстрационный домашний UI](UI_DEMO.md);
-  реальные устройства Яндекса пока не подключены.
+  не запускаются. PSRAM и [реальная модель Яндекса](YANDEX_HOME.md) включены;
+  вход, ответ на команду и восстановление сессии после RESET проверены на плате.
 
 ## Проверки
 
@@ -157,3 +158,6 @@ Art-раздел не записывался. Проверка второй за
 [Partition Tables](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-guides/partition-tables.html),
 [Wi-Fi API](https://docs.espressif.com/projects/esp-idf/en/v6.1/esp32s3/api-reference/network/esp_wifi.html),
 локальный пример ESP-IDF `examples/wifi/getting_started/softAP`.
+
+Домашняя STA-сеть работает одновременно с точкой доступа; настройки и вход
+в Яндекс описаны в [YANDEX_HOME.md](YANDEX_HOME.md).

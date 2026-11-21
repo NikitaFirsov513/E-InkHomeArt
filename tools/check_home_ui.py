@@ -16,7 +16,7 @@ exe=out/('home-ui-test.exe' if os.name=='nt' else 'home-ui-test')
 subprocess.run([*cmd,'-o',str(exe)],check=True)
 subprocess.run([str(exe)],check=True)
 libpath=out/('home-ui.dll' if os.name=='nt' else 'home-ui.so')
-link=['-Wl,/EXPORT:home_ui_test_preview'] if os.name=='nt' else ['-fPIC']
+link=['-Wl,/EXPORT:home_ui_test_preview','-Wl,/EXPORT:home_ui_live_preview'] if os.name=='nt' else ['-fPIC']
 subprocess.run([*cmd,'-shared',*link,'-o',str(libpath)],check=True)
 lib=ct.CDLL(str(libpath));render=lib.home_ui_test_preview
 render.argtypes=[ct.c_uint,ct.POINTER(ct.c_uint8),ct.c_size_t];render.restype=ct.c_bool
@@ -24,3 +24,9 @@ for page,name in enumerate(['home','rooms','room','scenes','device','settings','
     frame=(ct.c_uint8*48000)();assert render(page,frame,48000),name
     png(out/(name+'.png'),bytes(frame))
 print('Firmware raster previews:',out)
+
+live=lib.home_ui_live_preview
+live.argtypes=render.argtypes;live.restype=ct.c_bool
+for page,name in enumerate(['home','rooms','room','scenes','device','settings']):
+    frame=(ct.c_uint8*48000)();assert live(page,frame,48000),name
+    png(out/('live-'+name+'.png'),bytes(frame))

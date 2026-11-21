@@ -50,8 +50,78 @@ static void open_device(home_ui_t *u,unsigned device)
     u->draft=device<2?u->brightness[device]:device==2?u->temperature:u->curtains;
 }
 
+enum { LIVE_OPEN=100,LIVE_TOGGLE=140,LIVE_ROOM=180,LIVE_SCENE=200,
+       LIVE_PREV=230,LIVE_NEXT,LIVE_LOGIN,LIVE_CANCEL,LIVE_LOGOUT,LIVE_REFRESH };
+
+void home_ui_set_live(home_ui_t *u,const home_live_data_t *data)
+{
+    if(!u)return;
+    bool reset=!u->live||!data||u->live->epoch!=data->epoch;
+    u->live=data;
+    if(reset){u->page=HOME_PAGE_HOME;u->offset=0;u->device=0;u->room=0;u->command.kind=HOME_CMD_NONE;}
+    changed(u);
+}
+unsigned home_live_slots(const home_ui_t *u,unsigned slots[6])
+{
+    if(!u||!u->live)return 0;
+    unsigned n=0,skip=u->offset;
+    for(unsigned i=0;i<u->live->device_count;++i){
+        if(u->page==HOME_PAGE_ROOM&&u->live->devices[i].room!=u->room)continue;
+        if(skip){--skip;continue;}
+        if(n<6)slots[n++]=i;
+    }
+    return n;
+}
+static unsigned live_count(const home_ui_t *u)
+{
+    if(u->page==HOME_PAGE_ROOMS)return u->live->room_count;
+    if(u->page==HOME_PAGE_SCENES)return u->live->scene_count;
+    unsigned n=0;
+    for(unsigned i=0;i<u->live->device_count;++i)
+        if(u->page!=HOME_PAGE_ROOM||u->live->devices[i].room==u->room)++n;
+    return n;
+}
+static void live_action(home_ui_t *u,unsigned a)
+{
+    const home_live_data_t *l=u->live;
+    home_command_t c={.epoch=l->epoch};
+    if(a==NAV_HOME||a==NAV_ROOMS||a==NAV_SCENES||a==SETTINGS){
+        u->page=a==NAV_HOME?HOME_PAGE_HOME:a==NAV_ROOMS?HOME_PAGE_ROOMS:a==NAV_SCENES?HOME_PAGE_SCENES:HOME_PAGE_SETTINGS;u->offset=0;
+    }else if(a==ART){home_ui_show_art(u);return;}
+    else if(a==BACK){u->page=u->page==HOME_PAGE_DEVICE?(home_ui_page_t)u->return_page:u->page==HOME_PAGE_ROOM?HOME_PAGE_ROOMS:HOME_PAGE_HOME;u->offset=0;}
+    else if(a==LIVE_PREV)u->offset=u->offset>=6?u->offset-6:0;
+    else if(a==LIVE_NEXT&&u->offset+6<live_count(u))u->offset+=6;
+    else if(a>=LIVE_OPEN&&a<LIVE_OPEN+HOME_MAX_DEVICES){
+        unsigned d=a-LIVE_OPEN;if(d>=l->device_count)return;
+        u->return_page=u->page;u->page=HOME_PAGE_DEVICE;u->device=d;u->live_draft=l->devices[d].value;
+    }else if(a>=LIVE_ROOM&&a<LIVE_ROOM+HOME_MAX_ROOMS){u->room=a-LIVE_ROOM;u->page=HOME_PAGE_ROOM;u->offset=0;}
+    else if(a==LIVE_LOGIN)c.kind=HOME_CMD_LOGIN;
+    else if(a==LIVE_CANCEL)c.kind=HOME_CMD_CANCEL;
+    else if(a==LIVE_LOGOUT)c.kind=HOME_CMD_LOGOUT;
+    else if(a==LIVE_REFRESH)c.kind=HOME_CMD_REFRESH;
+    else if(a>=LIVE_SCENE&&a<LIVE_SCENE+HOME_MAX_SCENES){c.kind=HOME_CMD_SCENE;c.slot=a-LIVE_SCENE;}
+    else if(a>=LIVE_TOGGLE&&a<LIVE_TOGGLE+HOME_MAX_DEVICES){
+        c.kind=HOME_CMD_TOGGLE;c.slot=a-LIVE_TOGGLE;
+        if(c.slot>=l->device_count)return;
+        c.value=!l->devices[c.slot].on;
+    }else if(u->page==HOME_PAGE_DEVICE&&u->device<l->device_count){
+        const home_live_device_t *d=&l->devices[u->device];
+        if(a==MINUS||a==PLUS){
+            double v=u->live_draft+(a==PLUS?d->step:-d->step);
+            u->live_draft=v<d->minimum?d->minimum:v>d->maximum?d->maximum:v;
+        }else if(a==APPLY){c.kind=HOME_CMD_RANGE;c.slot=u->device;c.value=u->live_draft;}
+        else return;
+    }else return;
+    if(c.kind!=HOME_CMD_NONE){
+        if(l->pending)return;
+        u->command=c;
+    }
+    changed(u);
+}
+static unsigned live_controls(const home_ui_t *u,home_ui_control_t *out,unsigned cap);
 static void apply_action(home_ui_t *u,unsigned action)
 {
+    if(u->live){live_action(u,action);return;}
     if(action==NAV_HOME)u->page=HOME_PAGE_HOME;
     else if(action==NAV_ROOMS)u->page=HOME_PAGE_ROOMS;
     else if(action==NAV_SCENES)u->page=HOME_PAGE_SCENES;
@@ -146,7 +216,9 @@ static void device_controls(const home_ui_t *u,unsigned d,int x,int y,
 
 unsigned home_ui_controls(const home_ui_t *u,home_ui_control_t *out,unsigned cap)
 {
-    if(!u||!out||u->room>2||u->device>3)return 0;
+    if(!u||!out)return 0;
+    if(u->live)return live_controls(u,out,cap);
+    if(u->room>2||u->device>3)return 0;
     unsigned n=0;
     const char *tabs[]={"Главная","Комнаты","Сценарии","Картина"};
     const unsigned actions[]={NAV_HOME,NAV_ROOMS,NAV_SCENES,ART};
@@ -178,6 +250,48 @@ unsigned home_ui_controls(const home_ui_t *u,home_ui_control_t *out,unsigned cap
         add(out,cap,&n,PLUS,332,284,100,64,"+",false);
         add(out,cap,&n,APPLY,464,284,288,64,"Применить",true);
     }
+    return n;
+}
+
+static unsigned live_controls(const home_ui_t *u,home_ui_control_t *out,unsigned cap)
+{
+    const home_live_data_t *l=u->live;unsigned n=0;
+    const char *tabs[]={"Главная","Комнаты","Сценарии","Картина"};
+    for(unsigned i=0;i<4;++i)add(out,cap,&n,i+1,12+198*(int)i,428,182,44,tabs[i],
+        (i==0&&u->page==HOME_PAGE_HOME)||(i==1&&(u->page==HOME_PAGE_ROOMS||u->page==HOME_PAGE_ROOM))||(i==2&&u->page==HOME_PAGE_SCENES));
+    bool back=u->page==HOME_PAGE_DEVICE||u->page==HOME_PAGE_ROOM||u->page==HOME_PAGE_SETTINGS;
+    add(out,cap,&n,back?BACK:SETTINGS,626,14,150,44,back?"Назад":"Настройки",false);
+    if(u->page==HOME_PAGE_SETTINGS){
+        if(l->waiting)add(out,cap,&n,LIVE_CANCEL,24,326,216,48,"Отменить",false);
+        else if(!l->authorized)add(out,cap,&n,LIVE_LOGIN,24,326,300,48,"Войти в Яндекс",true);
+        else {add(out,cap,&n,LIVE_REFRESH,24,326,300,48,"Обновить устройства",false);add(out,cap,&n,LIVE_LOGOUT,548,326,216,48,"Выйти",false);}
+        return n;
+    }
+    if(!l->authorized){add(out,cap,&n,SETTINGS,224,230,352,60,"Подключить Яндекс",true);return n;}
+    if(u->page==HOME_PAGE_DEVICE&&u->device<l->device_count){
+        const home_live_device_t *d=&l->devices[u->device];
+        bool can=l->online&&l->time_ready&&!l->pending&&d->available&&l->loaded;
+        if(d->has_toggle&&can)add(out,cap,&n,LIVE_TOGGLE+u->device,432,126,320,52,d->on?"Выключить":"Включить",d->on);
+        if(d->has_range&&can){add(out,cap,&n,MINUS,48,284,100,64,"-",false);add(out,cap,&n,PLUS,332,284,100,64,"+",false);add(out,cap,&n,APPLY,464,284,288,64,"Применить",true);}
+        return n;
+    }
+    unsigned count=live_count(u),slots[6],shown=home_live_slots(u,slots);
+    if(u->page==HOME_PAGE_ROOMS||u->page==HOME_PAGE_SCENES){
+        for(unsigned i=0;i<6&&u->offset+i<count;++i){
+            unsigned slot=u->offset+i;bool room=u->page==HOME_PAGE_ROOMS;
+            if(!room&&(!l->online||!l->time_ready||l->pending||!l->loaded))continue;
+            add(out,cap,&n,(room?LIVE_ROOM:LIVE_SCENE)+slot,24+256*(int)(i%3),112+140*(int)(i/3),240,102,
+                room?l->rooms[slot].name:l->scenes[slot].name,false);
+        }
+    }else for(unsigned i=0;i<shown;++i){
+        unsigned slot=slots[i];const home_live_device_t *d=&l->devices[slot];
+        int x=24+256*(int)(i%3),y=104+140*(int)(i/3);
+        add(out,cap,&n,LIVE_OPEN+slot,x,y,240,130,NULL,false);
+        if(d->has_toggle&&d->available&&l->online&&l->time_ready&&!l->pending&&l->loaded)
+            add(out,cap,&n,LIVE_TOGGLE+slot,x+12,y+78,216,40,d->on?"Выключить":"Включить",d->on);
+    }
+    if(u->offset)add(out,cap,&n,LIVE_PREV,24,382,120,32,"<",false);
+    if(u->offset+6<count)add(out,cap,&n,LIVE_NEXT,656,382,120,32,">",false);
     return n;
 }
 

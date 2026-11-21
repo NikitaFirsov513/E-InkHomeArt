@@ -1,0 +1,1 @@
+Portable Yandex OAuth, HTTPS, NVS session and device/action model adapted from the local HomePanel project. ESP32-P4 board/network and LVGL sources are not included. Device name and setup text changed for EInkHomeArt. cJSON is vendored separately with its MIT license.

@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "home_live.h"
 
 #define HOME_UI_WIDTH 800U
 #define HOME_UI_HEIGHT 480U
@@ -11,6 +12,10 @@
 typedef enum { HOME_PAGE_HOME, HOME_PAGE_ROOMS, HOME_PAGE_ROOM,
                HOME_PAGE_SCENES, HOME_PAGE_DEVICE, HOME_PAGE_SETTINGS } home_ui_page_t;
 typedef struct {
+    const home_live_data_t *live;
+    unsigned offset;
+    double live_draft;
+    home_command_t command;
     bool active, visible, contact, require_release, pressed;
     uint8_t pointer_id, room, device, return_page, last_scene;
     bool light_on[2], heat_on;
@@ -41,3 +46,7 @@ unsigned home_ui_target(const home_ui_t *ui,int x,int y);
 bool home_ui_render(uint8_t *frame,size_t length,const home_ui_t *ui);
 bool home_ui_render_empty_art(uint8_t *frame,size_t length);
 bool home_ui_changed_region(const uint8_t *before,const uint8_t *after,size_t length,home_ui_region_t *region);
+
+/* Live data is borrowed; caller serializes updates with touch/render snapshots. */
+void home_ui_set_live(home_ui_t *ui,const home_live_data_t *data);
+unsigned home_live_slots(const home_ui_t *ui,unsigned slots[6]);

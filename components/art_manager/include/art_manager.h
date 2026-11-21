@@ -1,6 +1,7 @@
 #pragma once
 #include "art_store.h"
 #include "uc8179.h"
+#include "home_live.h"
 
 typedef enum {
     ART_DISPLAY_EMPTY, ART_DISPLAY_QUEUED, ART_DISPLAY_BUSY,
@@ -33,3 +34,8 @@ void art_manager_touch(unsigned count,int x,int y,unsigned id,int64_t now_us);
 void art_manager_cancel_touch(void);
 void art_manager_open_menu(void);
 void art_manager_show_art(void);
+
+/* Production attaches a live model before networking; backend publishes copies.
+ * Callback queues only and runs outside the UI spinlock. */
+esp_err_t art_manager_enable_home(bool (*submit)(const home_command_t *));
+void art_manager_home_update(const home_live_data_t *data);

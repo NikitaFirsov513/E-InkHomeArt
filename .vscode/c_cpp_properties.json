@@ -135,7 +135,10 @@
         "D:/esp/v6.1/esp-idf/components/esp_partition/include",
         "D:/esp/v6.1/esp-idf/components/esp_http_server/include",
         "D:/esp/v6.1/esp-idf/components/http_parser",
-        "${workspaceFolder}/components/home_ui/include"
+        "${workspaceFolder}/components/home_ui/include",
+        "${workspaceFolder}/components/home_backend/include",
+        "${workspaceFolder}/components/cjson",
+        "${workspaceFolder}/build/art/private"
       ],
       "browse": {
         "path": [
