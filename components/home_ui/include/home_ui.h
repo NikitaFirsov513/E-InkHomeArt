@@ -10,10 +10,11 @@
 #define HOME_UI_IDLE_US INT64_C(45000000)
 
 typedef enum { HOME_PAGE_HOME, HOME_PAGE_ROOMS, HOME_PAGE_ROOM,
-               HOME_PAGE_SCENES, HOME_PAGE_DEVICE, HOME_PAGE_SETTINGS } home_ui_page_t;
+               HOME_PAGE_SCENES, HOME_PAGE_DEVICE, HOME_PAGE_SETTINGS,
+               HOME_PAGE_ACCOUNT, HOME_PAGE_NETWORK } home_ui_page_t;
 typedef struct {
     const home_live_data_t *live;
-    unsigned offset;
+    unsigned offset,return_offset;
     double live_draft;
     home_command_t command;
     bool active, visible, contact, require_release, pressed;
@@ -27,7 +28,7 @@ typedef struct {
     int64_t last_activity_us;
 } home_ui_t;
 typedef struct { uint16_t x,y,width,height; } home_ui_region_t;
-typedef struct { unsigned action; int x,y,w,h; const char *label; bool filled; } home_ui_control_t;
+typedef struct { unsigned action; int x,y,w,h; const char *label; bool filled; unsigned preset; } home_ui_control_t;
 
 void home_ui_init(home_ui_t *ui);
 /* Only fresh GT911 frames. Multi-touch / drag / out-of-bounds cancels a click.
@@ -56,3 +57,9 @@ void home_ui_set_dark_theme(home_ui_t *ui,bool dark);
 /* UC8179 mono CDI DDX=01 uses 1=white, unlike the logical renderer's 1=black. */
 bool home_ui_render_panel(uint8_t *frame,size_t length,const home_ui_t *ui);
 bool home_ui_render_empty_art_panel(uint8_t *frame,size_t length);
+
+typedef enum { HOME_TILE_DEVICE,HOME_TILE_ROOM,HOME_TILE_SCENE } home_tile_kind_t;
+typedef struct { home_tile_kind_t kind; unsigned slot; } home_ui_tile_t;
+unsigned home_ui_tile_count(const home_ui_t *ui);
+unsigned home_ui_tiles(const home_ui_t *ui,home_ui_tile_t out[6]);
+double home_ui_preset_value(const home_live_device_t *device,unsigned preset);

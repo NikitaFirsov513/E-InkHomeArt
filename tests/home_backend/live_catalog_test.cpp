@@ -4,9 +4,10 @@
 #include <memory>
 #include <cstdio>
 static bool load(HomeCatalog &c,const char *text){auto *r=cJSON_Parse(text);bool ok=c.load(r);cJSON_Delete(r);return ok;}
-static const char *fixture=R"({"status":"ok","rooms":[{"id":"r1","name":"Kitchen"},{"id":"r2","name":"Kitchen"}],"scenarios":[{"id":"s/one","name":"Evening"}],"devices":[{"id":"lamp","name":"Lamp","type":"devices.types.light","room":"r2","capabilities":[{"type":"devices.capabilities.on_off","state":{"instance":"on","value":false}},{"type":"devices.capabilities.range","parameters":{"instance":"brightness","random_access":true,"range":{"min":1,"max":100,"precision":1}},"state":{"instance":"brightness","value":42}}]}]})";
+static const char *fixture=R"({"status":"ok","rooms":[{"id":"r1","name":"Kitchen"},{"id":"r2","name":"Kitchen"}],"scenarios":[{"id":"s/one","name":"Evening"}],"devices":[{"id":"lamp","name":"Lamp","type":"devices.types.light","room":"r2","capabilities":[{"type":"devices.capabilities.on_off","state":{"instance":"on","value":false}},{"type":"devices.capabilities.range","parameters":{"instance":"brightness","unit":"unit.percent","random_access":true,"range":{"min":1,"max":100,"precision":1}},"state":{"instance":"brightness","value":42}}]}]})";
 int main(){
  HomeCatalog c;assert(load(c,fixture));assert(c.data.loaded&&c.data.device_count==1&&c.data.devices[0].room==1);
+ assert(!strcmp(c.data.devices[0].unit,"%")&&c.data.devices[0].icon==HOME_ICON_LIGHT&&strstr(c.data.devices[0].state,"%"));
  auto epoch=c.data.epoch;assert(epoch&&load(c,fixture)&&c.data.epoch==epoch);
  home_command_t cmd{HOME_CMD_TOGGLE,epoch,0,1};std::string path,body;DeviceAction action;
  assert(c.command(cmd,path,body,action)&&path=="/v1.0/devices/actions"&&action.boolean);

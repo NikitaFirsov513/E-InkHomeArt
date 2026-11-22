@@ -31,6 +31,7 @@ void parseControls(Device &device, const cJSON *item)
             device.controls.push_back(c);
         } else if (c.type == "devices.capabilities.range") {
             c.kind = ControlKind::Range;
+            c.unit = str(p,"unit");
             if (c.instance.empty()) continue;
             c.relative_only = cJSON_IsFalse(cJSON_GetObjectItemCaseSensitive(p, "random_access"));
             const auto *range = cJSON_GetObjectItemCaseSensitive(p, "range");
@@ -83,7 +84,7 @@ void parseControls(Device &device, const cJSON *item)
             if (cJSON_IsNumber(min) && cJSON_IsNumber(max) && min->valuedouble >= 100 &&
                 max->valuedouble <= 20000 && max->valuedouble > min->valuedouble) {
                 DeviceControl t;
-                t.type = c.type; t.instance = "temperature_k"; t.kind = ControlKind::Range;
+                t.type = c.type; t.unit = "unit.temperature.kelvin"; t.instance = "temperature_k"; t.kind = ControlKind::Range;
                 t.minimum = min->valuedouble; t.maximum = max->valuedouble; t.step = 1;
                 t.known = state_instance == t.instance && cJSON_IsNumber(value) &&
                           value->valuedouble >= t.minimum && value->valuedouble <= t.maximum;

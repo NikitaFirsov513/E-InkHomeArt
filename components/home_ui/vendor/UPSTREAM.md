@@ -17,3 +17,6 @@ download the pinned source to `build/references/NotoSans.ttf`, then run:
 ```powershell
 python tools/generate_ui_font.py --font build/references/NotoSans.ttf
 ```
+
+The firmware subset includes 18/20 px regular, 20/28 px semibold, and a
+48 px semibold numeric/unit subset for the device detail view.

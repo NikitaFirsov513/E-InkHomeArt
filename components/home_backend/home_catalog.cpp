@@ -67,17 +67,23 @@ bool HomeCatalog::load(cJSON *root)
         d.available=status.empty()||status=="online";out.available=d.available;
         signature.push_back("device:"+d.id+":"+room);
         homeText(out.name,sizeof(out.name),d.name);
+        out.icon=d.type.find("light")!=std::string::npos?HOME_ICON_LIGHT:
+                 d.type.find("thermostat")!=std::string::npos||d.type.find("heater")!=std::string::npos?HOME_ICON_HEAT:
+                 d.type.find("curtain")!=std::string::npos||d.type.find("openable")!=std::string::npos?HOME_ICON_CURTAIN:HOME_ICON_POWER;
         std::string label="Состояние неизвестно";
         for(const auto &c:d.controls){
-            signature.push_back(d.id+":"+c.type+":"+c.instance+":"+std::to_string(c.minimum)+":"+std::to_string(c.maximum)+":"+std::to_string(c.step));
+            signature.push_back(d.id+":"+c.type+":"+c.instance+":"+std::to_string(c.minimum)+":"+std::to_string(c.maximum)+":"+std::to_string(c.step)+":"+c.unit);
             if(c.type=="devices.capabilities.on_off"&&c.known){out.has_toggle=true;out.on=c.boolean;label=c.boolean?"Включено":"Выключено";}
             if(c.kind==ControlKind::Range&&!c.relative_only&&c.known&&!out.has_range){
                 out.has_range=true;out.value=c.number;out.minimum=c.minimum;out.maximum=c.maximum;out.step=c.step;
                 const auto name=c.instance=="brightness"?"Яркость":c.instance=="temperature"?"Температура":c.instance=="open"?"Открытие":c.instance=="volume"?"Громкость":c.instance=="temperature_k"?"Температура света":c.instance;
                 homeText(out.range_name,sizeof(out.range_name),name);
+                const char *unit=c.unit=="unit.percent"?"%":c.unit=="unit.temperature.celsius"?"°C":
+                                 c.unit=="unit.temperature.kelvin"?"K":"";
+                homeText(out.unit,sizeof(out.unit),unit);
             }
         }
-        if(out.has_range){char value[32];snprintf(value,sizeof(value),"%g",out.value);label=out.has_toggle?label+" / "+value:std::string(out.range_name)+": "+value;}
+        if(out.has_range){char value[32];snprintf(value,sizeof(value),"%g%s%s",out.value,out.unit[0]?" ":"",out.unit);label=out.has_toggle?label+" / "+value:std::string(out.range_name)+": "+value;}
         else if(!out.has_toggle&&!d.readings.empty())label=d.readings.front();
         homeText(out.state,sizeof(out.state),label);
     }

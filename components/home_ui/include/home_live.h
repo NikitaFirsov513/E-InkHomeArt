@@ -4,8 +4,10 @@
 #define HOME_MAX_DEVICES 32
 #define HOME_MAX_ROOMS 16
 #define HOME_MAX_SCENES 16
+typedef enum { HOME_ICON_POWER,HOME_ICON_LIGHT,HOME_ICON_HEAT,HOME_ICON_CURTAIN } home_device_icon_t;
 typedef struct {
-    char name[80],state[80],range_name[40];
+    char name[80],state[80],range_name[40],unit[12];
+    home_device_icon_t icon;
     uint8_t room;
     bool available,has_toggle,on,has_range;
     double value,minimum,maximum,step;

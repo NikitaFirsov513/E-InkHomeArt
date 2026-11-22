@@ -27,7 +27,7 @@ print('Firmware raster previews:',out)
 
 live=lib.home_ui_live_preview
 live.argtypes=render.argtypes;live.restype=ct.c_bool
-for page,name in enumerate(['home','rooms','room','scenes','device','settings']):
+for page,name in enumerate(['home','rooms','room','scenes','device','settings','account','network']):
     frame=(ct.c_uint8*48000)();assert live(page,frame,48000),name
     png(out/('live-'+name+'.png'),bytes(frame))
 

@@ -56,7 +56,8 @@ static void open_device(home_ui_t *u,unsigned device)
 }
 
 enum { LIVE_OPEN=100,LIVE_TOGGLE=140,LIVE_ROOM=180,LIVE_SCENE=200,
-       LIVE_PREV=230,LIVE_NEXT,LIVE_LOGIN,LIVE_CANCEL,LIVE_LOGOUT,LIVE_REFRESH,LIVE_THEME };
+       LIVE_PREV=230,LIVE_NEXT,LIVE_LOGIN,LIVE_CANCEL,LIVE_LOGOUT,LIVE_REFRESH,LIVE_THEME,LIVE_ACCOUNT,LIVE_NETWORK,
+       LIVE_ON=240,LIVE_OFF,LIVE_PRESET=242 };
 
 void home_ui_set_live(home_ui_t *u,const home_live_data_t *data)
 {
@@ -66,25 +67,58 @@ void home_ui_set_live(home_ui_t *u,const home_live_data_t *data)
     if(reset){u->page=HOME_PAGE_HOME;u->offset=0;u->device=0;u->room=0;u->command.kind=HOME_CMD_NONE;}
     changed(u);
 }
-unsigned home_live_slots(const home_ui_t *u,unsigned slots[6])
+unsigned home_ui_tile_count(const home_ui_t *u)
 {
     if(!u||!u->live)return 0;
-    unsigned n=0,skip=u->offset;
-    for(unsigned i=0;i<u->live->device_count;++i){
-        if(u->page==HOME_PAGE_ROOM&&u->live->devices[i].room!=u->room)continue;
-        if(skip){--skip;continue;}
-        if(n<6)slots[n++]=i;
-    }
-    return n;
-}
-static unsigned live_count(const home_ui_t *u)
-{
+    if(u->page==HOME_PAGE_HOME)return u->live->device_count+u->live->scene_count;
     if(u->page==HOME_PAGE_ROOMS)return u->live->room_count;
     if(u->page==HOME_PAGE_SCENES)return u->live->scene_count;
     unsigned n=0;
     for(unsigned i=0;i<u->live->device_count;++i)
         if(u->page!=HOME_PAGE_ROOM||u->live->devices[i].room==u->room)++n;
     return n;
+}
+unsigned home_ui_tiles(const home_ui_t *u,home_ui_tile_t out[6])
+{
+    if(!u||!u->live||!out)return 0;
+    const home_live_data_t *l=u->live;unsigned n=0,skip=u->offset;
+    if(u->page==HOME_PAGE_HOME){
+        /* First page follows mock A: four devices, two real scenarios.
+         * Remaining entries keep their native slots on subsequent pages. */
+        unsigned d=l->device_count<4?l->device_count:4,s=l->scene_count<2?l->scene_count:2;
+        for(unsigned i=0;i<l->device_count+l->scene_count;++i){
+            home_ui_tile_t tile;
+            if(i<d)tile=(home_ui_tile_t){HOME_TILE_DEVICE,i};
+            else if(i<d+s)tile=(home_ui_tile_t){HOME_TILE_SCENE,i-d};
+            else if(i<l->device_count+s)tile=(home_ui_tile_t){HOME_TILE_DEVICE,i-s};
+            else tile=(home_ui_tile_t){HOME_TILE_SCENE,i-l->device_count};
+            if(skip){--skip;continue;}if(n<6)out[n++]=tile;
+        }
+    }else if(u->page==HOME_PAGE_ROOMS||u->page==HOME_PAGE_SCENES){
+        unsigned count=u->page==HOME_PAGE_ROOMS?l->room_count:l->scene_count;
+        for(unsigned i=0;i<count;++i){if(skip){--skip;continue;}if(n<6)out[n++]=(home_ui_tile_t){u->page==HOME_PAGE_ROOMS?HOME_TILE_ROOM:HOME_TILE_SCENE,i};}
+    }else for(unsigned i=0;i<l->device_count;++i){
+        if(u->page==HOME_PAGE_ROOM&&l->devices[i].room!=u->room)continue;
+        if(skip){--skip;continue;}if(n<6)out[n++]=(home_ui_tile_t){HOME_TILE_DEVICE,i};
+    }
+    return n;
+}
+unsigned home_live_slots(const home_ui_t *u,unsigned slots[6])
+{
+    home_ui_tile_t tiles[6];unsigned total=home_ui_tiles(u,tiles),n=0;
+    for(unsigned i=0;i<total;++i)if(tiles[i].kind==HOME_TILE_DEVICE)slots[n++]=tiles[i].slot;
+    return n;
+}
+double home_ui_preset_value(const home_live_device_t *d,unsigned preset)
+{
+    if(!d||!d->has_range||d->step<=0||preset>3)return 0;
+    double ratio=(preset+1)*0.25;
+    double target=!strcmp(d->unit,"%")?d->maximum*ratio:d->minimum+(d->maximum-d->minimum)*ratio;
+    if(target<d->minimum)target=d->minimum;
+    unsigned steps=(unsigned)((target-d->minimum)/d->step+0.5);
+    unsigned max_steps=(unsigned)((d->maximum-d->minimum)/d->step+0.0000001);
+    if(steps>max_steps)steps=max_steps;
+    return d->minimum+steps*d->step;
 }
 static void live_action(home_ui_t *u,unsigned a)
 {
@@ -93,18 +127,28 @@ static void live_action(home_ui_t *u,unsigned a)
     if(a==NAV_HOME||a==NAV_ROOMS||a==NAV_SCENES||a==SETTINGS){
         u->page=a==NAV_HOME?HOME_PAGE_HOME:a==NAV_ROOMS?HOME_PAGE_ROOMS:a==NAV_SCENES?HOME_PAGE_SCENES:HOME_PAGE_SETTINGS;u->offset=0;
     }else if(a==ART){home_ui_show_art(u);return;}
-    else if(a==BACK){u->page=u->page==HOME_PAGE_DEVICE?(home_ui_page_t)u->return_page:u->page==HOME_PAGE_ROOM?HOME_PAGE_ROOMS:HOME_PAGE_HOME;u->offset=0;}
+    else if(a==BACK){
+        bool from_device=u->page==HOME_PAGE_DEVICE;
+        u->page=from_device?(home_ui_page_t)u->return_page:u->page==HOME_PAGE_ROOM?HOME_PAGE_ROOMS:
+            (u->page==HOME_PAGE_ACCOUNT||u->page==HOME_PAGE_NETWORK)?HOME_PAGE_SETTINGS:HOME_PAGE_HOME;
+        u->offset=from_device?u->return_offset:0;
+    }
     else if(a==LIVE_PREV)u->offset=u->offset>=6?u->offset-6:0;
-    else if(a==LIVE_NEXT&&u->offset+6<live_count(u))u->offset+=6;
+    else if(a==LIVE_NEXT&&u->offset+6<home_ui_tile_count(u))u->offset+=6;
     else if(a>=LIVE_OPEN&&a<LIVE_OPEN+HOME_MAX_DEVICES){
         unsigned d=a-LIVE_OPEN;if(d>=l->device_count)return;
-        u->return_page=u->page;u->page=HOME_PAGE_DEVICE;u->device=d;u->live_draft=l->devices[d].value;
+        u->return_page=u->page;u->return_offset=u->offset;u->page=HOME_PAGE_DEVICE;u->device=d;u->live_draft=l->devices[d].value;
     }else if(a>=LIVE_ROOM&&a<LIVE_ROOM+HOME_MAX_ROOMS){u->room=a-LIVE_ROOM;u->page=HOME_PAGE_ROOM;u->offset=0;}
+    else if(a==LIVE_ACCOUNT)u->page=HOME_PAGE_ACCOUNT;
+    else if(a==LIVE_NETWORK)u->page=HOME_PAGE_NETWORK;
     else if(a==LIVE_LOGIN)c.kind=HOME_CMD_LOGIN;
     else if(a==LIVE_CANCEL)c.kind=HOME_CMD_CANCEL;
     else if(a==LIVE_LOGOUT)c.kind=HOME_CMD_LOGOUT;
     else if(a==LIVE_REFRESH)c.kind=HOME_CMD_REFRESH;
     else if(a==LIVE_THEME)u->dark_theme=!u->dark_theme;
+    else if((a==LIVE_ON||a==LIVE_OFF)&&u->page==HOME_PAGE_DEVICE){c.kind=HOME_CMD_TOGGLE;c.slot=u->device;c.value=a==LIVE_ON;}
+    else if(a>=LIVE_PRESET&&a<LIVE_PRESET+4&&u->page==HOME_PAGE_DEVICE&&u->device<l->device_count)
+        u->live_draft=home_ui_preset_value(&l->devices[u->device],a-LIVE_PRESET);
     else if(a>=LIVE_SCENE&&a<LIVE_SCENE+HOME_MAX_SCENES){c.kind=HOME_CMD_SCENE;c.slot=a-LIVE_SCENE;}
     else if(a>=LIVE_TOGGLE&&a<LIVE_TOGGLE+HOME_MAX_DEVICES){
         c.kind=HOME_CMD_TOGGLE;c.slot=a-LIVE_TOGGLE;
@@ -207,7 +251,7 @@ bool home_ui_tick(home_ui_t *u,int64_t now)
 static void add(home_ui_control_t *out,unsigned capacity,unsigned *n,unsigned id,
                 int x,int y,int w,int h,const char *label,bool filled)
 {
-    if(*n<capacity)out[(*n)++]=(home_ui_control_t){id,x,y,w,h,label,filled};
+    if(*n<capacity)out[(*n)++]=(home_ui_control_t){.action=id,.x=x,.y=y,.w=w,.h=h,.label=label,.filled=filled};
 }
 
 static void device_controls(const home_ui_t *u,unsigned d,int x,int y,
@@ -265,40 +309,60 @@ static unsigned live_controls(const home_ui_t *u,home_ui_control_t *out,unsigned
     const char *tabs[]={"Главная","Комнаты","Сценарии","Картина"};
     for(unsigned i=0;i<4;++i)add(out,cap,&n,i+1,12+198*(int)i,428,182,44,tabs[i],
         (i==0&&u->page==HOME_PAGE_HOME)||(i==1&&(u->page==HOME_PAGE_ROOMS||u->page==HOME_PAGE_ROOM))||(i==2&&u->page==HOME_PAGE_SCENES));
-    bool back=u->page==HOME_PAGE_DEVICE||u->page==HOME_PAGE_ROOM||u->page==HOME_PAGE_SETTINGS;
-    add(out,cap,&n,back?BACK:SETTINGS,626,14,150,44,back?"Назад":"Настройки",false);
+    bool detail=u->page==HOME_PAGE_DEVICE||u->page==HOME_PAGE_ACCOUNT||u->page==HOME_PAGE_NETWORK;
+    if(detail)add(out,cap,&n,BACK,24,12,104,44,"Назад",false);
+    else if(u->page==HOME_PAGE_ROOM||u->page==HOME_PAGE_SETTINGS)add(out,cap,&n,BACK,672,10,104,44,"Назад",false);
+    else add(out,cap,&n,SETTINGS,720,10,56,44,"...",false);
+    bool can=l->online&&l->time_ready&&!l->pending&&l->loaded;
     if(u->page==HOME_PAGE_SETTINGS){
-        add(out,cap,&n,LIVE_THEME,340,326,180,48,u->dark_theme?"Светлая тема":"Тёмная тема",false);
-        if(l->waiting)add(out,cap,&n,LIVE_CANCEL,24,326,216,48,"Отменить",false);
-        else if(!l->authorized)add(out,cap,&n,LIVE_LOGIN,24,326,300,48,"Войти в Яндекс",true);
-        else {add(out,cap,&n,LIVE_REFRESH,24,326,300,48,"Обновить устройства",false);add(out,cap,&n,LIVE_LOGOUT,548,326,216,48,"Выйти",false);}
+        add(out,cap,&n,LIVE_NETWORK,626,84,150,56,"Открыть",false);
+        add(out,cap,&n,LIVE_ACCOUNT,626,164,150,56,"Аккаунт",false);
+        add(out,cap,&n,LIVE_THEME,626,244,150,56,"Изменить",false);
+        add(out,cap,&n,ART,626,324,150,56,"Показать",false);
         return n;
     }
-    if(!l->authorized){add(out,cap,&n,SETTINGS,224,230,352,60,"Подключить Яндекс",true);return n;}
+    if(u->page==HOME_PAGE_ACCOUNT){
+        if(l->waiting)add(out,cap,&n,l->pending?0:LIVE_CANCEL,24,326,216,48,"Отменить",false);
+        else if(!l->authorized)add(out,cap,&n,l->pending?0:LIVE_LOGIN,24,326,300,48,"Войти в Яндекс",true);
+        else {add(out,cap,&n,l->pending?0:LIVE_REFRESH,24,326,300,48,"Обновить устройства",false);add(out,cap,&n,l->pending?0:LIVE_LOGOUT,548,326,216,48,"Выйти",false);}
+        return n;
+    }
+    if(u->page==HOME_PAGE_NETWORK)return n;
+    if(!l->authorized){add(out,cap,&n,LIVE_ACCOUNT,224,230,352,60,"Подключить Яндекс",true);return n;}
     if(u->page==HOME_PAGE_DEVICE&&u->device<l->device_count){
-        const home_live_device_t *d=&l->devices[u->device];
-        bool can=l->online&&l->time_ready&&!l->pending&&d->available&&l->loaded;
-        if(d->has_toggle&&can)add(out,cap,&n,LIVE_TOGGLE+u->device,432,126,320,52,d->on?"Выключить":"Включить",d->on);
-        if(d->has_range&&can){add(out,cap,&n,MINUS,48,284,100,64,"-",false);add(out,cap,&n,PLUS,332,284,100,64,"+",false);add(out,cap,&n,APPLY,464,284,288,64,"Применить",true);}
+        const home_live_device_t *d=&l->devices[u->device];bool ready=can&&d->available;
+        if(d->has_toggle){
+            add(out,cap,&n,ready?LIVE_ON:0,24,341,138,56,"Включить",!d->on);
+            add(out,cap,&n,ready?LIVE_OFF:0,178,341,138,56,"Выключить",d->on);
+        }
+        if(d->has_range){
+            add(out,cap,&n,ready?MINUS:0,346,220,80,56,"-",false);
+            add(out,cap,&n,ready?PLUS:0,696,220,80,56,"+",false);
+            for(unsigned i=0;i<4;++i){
+                unsigned before=n;add(out,cap,&n,ready?LIVE_PRESET+i:0,346+110*(int)i,289,100,44,NULL,false);
+                if(n>before)out[n-1].preset=i+1;
+            }
+            add(out,cap,&n,ready?APPLY:0,346,352,430,44,"Применить",true);
+        }
         return n;
     }
-    unsigned count=live_count(u),slots[6],shown=home_live_slots(u,slots);
-    if(u->page==HOME_PAGE_ROOMS||u->page==HOME_PAGE_SCENES){
-        for(unsigned i=0;i<6&&u->offset+i<count;++i){
-            unsigned slot=u->offset+i;bool room=u->page==HOME_PAGE_ROOMS;
-            if(!room&&(!l->online||!l->time_ready||l->pending||!l->loaded))continue;
-            add(out,cap,&n,(room?LIVE_ROOM:LIVE_SCENE)+slot,24+256*(int)(i%3),112+140*(int)(i/3),240,102,
-                room?l->rooms[slot].name:l->scenes[slot].name,false);
-        }
-    }else for(unsigned i=0;i<shown;++i){
-        unsigned slot=slots[i];const home_live_device_t *d=&l->devices[slot];
-        int x=24+256*(int)(i%3),y=104+140*(int)(i/3);
-        add(out,cap,&n,LIVE_OPEN+slot,x,y,240,130,NULL,false);
-        if(d->has_toggle&&d->available&&l->online&&l->time_ready&&!l->pending&&l->loaded)
-            add(out,cap,&n,LIVE_TOGGLE+slot,x+12,y+78,216,40,d->on?"Выключить":"Включить",d->on);
+    unsigned count=home_ui_tile_count(u);home_ui_tile_t tiles[6];unsigned shown=home_ui_tiles(u,tiles);
+    for(unsigned i=0;i<shown;++i){
+        unsigned slot=tiles[i].slot;int x=24+256*(int)(i%3),y=110+150*(int)(i/3);
+        unsigned card=0,action=0;const char *label="Открыть";bool filled=false;
+        if(tiles[i].kind==HOME_TILE_DEVICE){
+            const home_live_device_t *d=&l->devices[slot];card=LIVE_OPEN+slot;
+            if(!d->available)label="Недоступно";
+            else if(!l->online||!l->time_ready||!l->loaded)label="Нет связи";
+            else if(l->pending)label="Ожидание";
+            else {action=d->has_toggle?LIVE_TOGGLE+slot:LIVE_OPEN+slot;label=d->has_toggle?(d->on?"Выключить":"Включить"):"Настроить";filled=d->has_toggle&&d->on;}
+        }else if(tiles[i].kind==HOME_TILE_ROOM){card=action=LIVE_ROOM+slot;}
+        else {action=can?LIVE_SCENE+slot:0;label=!l->online||!l->time_ready||!l->loaded?"Нет связи":l->pending?"Ожидание":"Запустить";}
+        add(out,cap,&n,card,x,y,240,138,NULL,false);
+        add(out,cap,&n,action,x+12,y+80,216,44,label,filled);
     }
-    if(u->offset)add(out,cap,&n,LIVE_PREV,24,382,120,32,"<",false);
-    if(u->offset+6<count)add(out,cap,&n,LIVE_NEXT,656,382,120,32,">",false);
+    if(u->offset)add(out,cap,&n,LIVE_PREV,626,64,68,44,"<",false);
+    if(u->offset+6<count)add(out,cap,&n,LIVE_NEXT,708,64,68,44,">",false);
     return n;
 }
 

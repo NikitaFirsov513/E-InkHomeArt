@@ -20,27 +20,33 @@ static bool tap(home_ui_t *u,int x,int y,int64_t now)
 static void live_fixture(home_live_data_t *l)
 {
     memset(l,0,sizeof(*l));l->epoch=7;l->online=l->time_ready=l->authorized=l->loaded=true;
-    l->device_count=8;l->room_count=2;l->scene_count=1;
+    l->device_count=8;l->room_count=2;l->scene_count=2;
     strcpy(l->message,"Устройства обновлены");strcpy(l->ip,"192.168.1.25");
-    strcpy(l->rooms[0].name,"Гостиная");strcpy(l->rooms[1].name,"Кухня");strcpy(l->scenes[0].name,"Вечер");
+    strcpy(l->rooms[0].name,"Гостиная");strcpy(l->rooms[1].name,"Кухня");strcpy(l->scenes[0].name,"Я дома");strcpy(l->scenes[1].name,"Уйти из дома");
     for(unsigned i=0;i<8;++i){
         home_live_device_t *d=&l->devices[i];snprintf(d->name,sizeof(d->name),"Свет %u / очень длинное название",i+1);
         strcpy(d->state,"Выключено / 40");strcpy(d->range_name,"Яркость");d->available=d->has_toggle=d->has_range=true;
         d->minimum=1;d->maximum=100;d->step=1;d->value=40;d->room=i%2;
+        strcpy(d->unit,"%");d->icon=i==2?HOME_ICON_HEAT:i==3?HOME_ICON_CURTAIN:HOME_ICON_LIGHT;
     }
+    const char *names[]={"Свет · гостиная","Свет · кухня","Отопление","Шторы"};
+    for(unsigned i=0;i<4;++i)snprintf(l->devices[i].name,sizeof(l->devices[i].name),"%s",names[i]);
 }
 bool home_ui_live_preview(unsigned page,uint8_t *frame,size_t n)
 {
     home_ui_t u;home_ui_init(&u);static home_live_data_t l;live_fixture(&l);home_ui_set_live(&u,&l);u.active=true;
-    u.page=(home_ui_page_t)page;u.live_draft=40;
-    if(page==HOME_PAGE_SETTINGS){l.authorized=false;l.waiting=true;strcpy(l.code,"123-456");strcpy(l.url,"https://oauth.yandex.ru/device");strcpy(l.message,"Ожидаем подтверждение на телефоне");}
+    u.page=(home_ui_page_t)page;u.live_draft=65;l.device_count=4;
+    l.devices[0].on=true;l.devices[0].value=65;strcpy(l.devices[0].state,"Включён");
+    strcpy(l.devices[1].state,"Выключен");strcpy(l.devices[2].state,"22 °C");strcpy(l.devices[3].state,"Открыты");
+    l.devices[2].has_toggle=false;l.devices[3].has_toggle=false;
+    if(page==HOME_PAGE_ACCOUNT){l.authorized=false;l.waiting=true;strcpy(l.code,"123-456");strcpy(l.url,"https://oauth.yandex.ru/device");strcpy(l.message,"Ожидаем подтверждение на телефоне");}
     return home_ui_render(frame,n,&u);
 }
 bool home_ui_login_preview(const char *url,uint8_t *frame,size_t n)
 {
     home_ui_t u;home_ui_init(&u);static home_live_data_t l;live_fixture(&l);
     l.authorized=false;l.waiting=true;strcpy(l.code,"123-456");snprintf(l.url,sizeof(l.url),"%s",url);
-    home_ui_set_live(&u,&l);u.active=true;u.page=HOME_PAGE_SETTINGS;
+    home_ui_set_live(&u,&l);u.active=true;u.page=HOME_PAGE_ACCOUNT;
     return home_ui_render(frame,n,&u);
 }
 /* Native bytes sent to the controller, not the logical preview bitmap. */
@@ -48,7 +54,7 @@ bool home_ui_login_theme_preview(const char *url,bool dark,uint8_t *frame,size_t
 {
     home_ui_t u;home_ui_init(&u);static home_live_data_t l;live_fixture(&l);
     l.authorized=false;l.waiting=true;strcpy(l.code,"123-456");snprintf(l.url,sizeof(l.url),"%s",url);
-    home_ui_set_live(&u,&l);u.active=true;u.page=HOME_PAGE_SETTINGS;home_ui_set_dark_theme(&u,dark);
+    home_ui_set_live(&u,&l);u.active=true;u.page=HOME_PAGE_ACCOUNT;home_ui_set_dark_theme(&u,dark);
     return home_ui_render_panel(frame,n,&u);
 }
 static void live_tests(void)
@@ -56,16 +62,37 @@ static void live_tests(void)
     home_ui_t u;home_ui_init(&u);static home_live_data_t l;live_fixture(&l);home_ui_set_live(&u,&l);home_ui_open_menu(&u,0);shown(&u,0);
     assert(tap(&u,100,200,1000));assert(u.command.kind==HOME_CMD_TOGGLE&&u.command.epoch==7&&u.command.slot==0&&u.command.value==1);
     assert(!l.devices[0].on);u.command.kind=HOME_CMD_NONE;shown(&u,2000);
-    assert(tap(&u,700,398,3000)&&u.offset==6);shown(&u,4000);
-    assert(tap(&u,100,125,5000)&&u.page==HOME_PAGE_DEVICE&&u.device==6);shown(&u,6000);
-    assert(tap(&u,380,310,7000)&&u.live_draft==41&&l.devices[6].value==40);shown(&u,8000);
-    assert(tap(&u,600,310,9000)&&u.command.kind==HOME_CMD_RANGE&&u.command.slot==6&&u.command.value==41);
+    unsigned seen_d[HOME_MAX_DEVICES]={0},seen_s[HOME_MAX_SCENES]={0};
+    for(u.offset=0;u.offset<home_ui_tile_count(&u);u.offset+=6){
+        home_ui_tile_t tiles[6];unsigned n=home_ui_tiles(&u,tiles);
+        for(unsigned i=0;i<n;++i){if(tiles[i].kind==HOME_TILE_DEVICE)++seen_d[tiles[i].slot];else ++seen_s[tiles[i].slot];}
+    }
+    for(unsigned i=0;i<l.device_count;++i)assert(seen_d[i]==1);
+    for(unsigned i=0;i<l.scene_count;++i)assert(seen_s[i]==1);
+    u.offset=0;assert(tap(&u,400,360,2100)&&u.command.kind==HOME_CMD_SCENE&&u.command.slot==0);
+    u.command.kind=HOME_CMD_NONE;shown(&u,2500);
+    assert(tap(&u,740,86,3000)&&u.offset==6);shown(&u,4000);
+    assert(tap(&u,100,125,5000)&&u.page==HOME_PAGE_DEVICE&&u.device==4);shown(&u,6000);
+    assert(tap(&u,736,250,7000)&&u.live_draft==41&&l.devices[4].value==40);shown(&u,8000);
+    assert(tap(&u,560,375,9000)&&u.command.kind==HOME_CMD_RANGE&&u.command.slot==4&&u.command.value==41);
     u.command.kind=HOME_CMD_NONE;shown(&u,10000);
+    assert(tap(&u,610,310,10200)&&u.live_draft==75&&u.command.kind==HOME_CMD_NONE&&l.devices[4].value==40);shown(&u,10500);
+    assert(tap(&u,560,375,10600)&&u.command.kind==HOME_CMD_RANGE&&u.command.value==75);u.command.kind=HOME_CMD_NONE;shown(&u,10800);
+    assert(tap(&u,80,32,10900)&&u.page==HOME_PAGE_HOME&&u.offset==6);shown(&u,11000);
+    assert(tap(&u,100,125,11100)&&u.device==4&&u.page==HOME_PAGE_DEVICE);shown(&u,11200);
     l.pending=true;home_ui_set_live(&u,&l);shown(&u,11000);
-    home_ui_control_t controls[24];unsigned count=home_ui_controls(&u,controls,24);assert(count==5);
-    l.pending=false;l.online=false;home_ui_set_live(&u,&l);shown(&u,12000);assert(home_ui_controls(&u,controls,24)==5);
+    home_ui_control_t controls[24];unsigned count=home_ui_controls(&u,controls,24);assert(count==14);for(unsigned i=0;i<count;++i)assert(controls[i].action<=6);
+    l.pending=false;l.online=false;home_ui_set_live(&u,&l);shown(&u,12000);assert(home_ui_controls(&u,controls,24)==14);
     static uint8_t guarded[HOME_UI_BYTES+2];
-    for(unsigned page=0;page<6;++page){memset(guarded,0xa5,sizeof(guarded));assert(home_ui_live_preview(page,guarded+1,HOME_UI_BYTES));assert(guarded[0]==0xa5&&guarded[sizeof(guarded)-1]==0xa5);}
+    for(unsigned page=0;page<8;++page){memset(guarded,0xa5,sizeof(guarded));assert(home_ui_live_preview(page,guarded+1,HOME_UI_BYTES));assert(guarded[0]==0xa5&&guarded[sizeof(guarded)-1]==0xa5);}
+    for(unsigned page=0;page<8;++page){
+        home_ui_t geometry;home_ui_init(&geometry);home_ui_set_live(&geometry,&l);geometry.page=(home_ui_page_t)page;
+        unsigned n=home_ui_controls(&geometry,controls,24);assert(n<=20);
+        for(unsigned i=0;i<n;++i){const home_ui_control_t *c=&controls[i];
+            assert(c->x>=0&&c->y>=0&&c->x+c->w<=800&&c->y+c->h<=480&&c->h>=44);
+            if(c->label||c->preset)assert(home_ui_target(&geometry,c->x+c->w/2,c->y+c->h/2)==c->action);
+        }
+    }
     /* Four module quiet zone must survive the complete page layout. */
     assert(home_ui_login_preview("https://ya.ru/device",guarded+1,HOME_UI_BYTES));
     unsigned black=0;
@@ -79,11 +106,16 @@ static void live_tests(void)
     char long_url[256];memset(long_url,'a',sizeof(long_url));long_url[255]=0;
     assert(home_ui_login_preview(long_url,guarded+1,HOME_UI_BYTES)); // Unencodable URI retains manual fallback.
     home_ui_init(&u);memset(&l,0,sizeof(l));home_ui_set_live(&u,&l);home_ui_open_menu(&u,0);shown(&u,0);
-    assert(tap(&u,400,250,1000)&&u.page==HOME_PAGE_SETTINGS);shown(&u,2000);
+    assert(tap(&u,400,250,1000)&&u.page==HOME_PAGE_ACCOUNT);shown(&u,2000);
     assert(tap(&u,120,350,3000)&&u.command.kind==HOME_CMD_LOGIN);
     u.command.kind=HOME_CMD_NONE;shown(&u,4000);
-    assert(tap(&u,400,350,5000)&&u.dark_theme&&u.command.kind==HOME_CMD_NONE);shown(&u,6000);
-    assert(tap(&u,400,350,7000)&&!u.dark_theme);shown(&u,8000);
+    assert(tap(&u,80,32,4100)&&u.page==HOME_PAGE_SETTINGS);shown(&u,4500);
+    assert(tap(&u,700,270,5000)&&u.dark_theme&&u.command.kind==HOME_CMD_NONE);shown(&u,6000);
+    assert(tap(&u,700,270,7000)&&!u.dark_theme);shown(&u,8000);
+    assert(tap(&u,700,110,8100)&&u.page==HOME_PAGE_NETWORK);shown(&u,8300);
+    assert(tap(&u,80,32,8400)&&u.page==HOME_PAGE_SETTINGS);shown(&u,8600);
+    assert(tap(&u,700,190,8700)&&u.page==HOME_PAGE_ACCOUNT);shown(&u,8900);
+    assert(tap(&u,80,32,9000)&&u.page==HOME_PAGE_SETTINGS);shown(&u,9200);
     assert(home_ui_render_panel(guarded+1,HOME_UI_BYTES,&u)&&guarded[1]==0xff); // Native white background.
     home_ui_set_dark_theme(&u,true);
     assert(home_ui_render_panel(guarded+1,HOME_UI_BYTES,&u)&&guarded[1]==0); // Explicit dark theme.

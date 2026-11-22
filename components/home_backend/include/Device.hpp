@@ -17,6 +17,7 @@ struct ControlOption {
 struct DeviceControl {
     std::string type;
     std::string instance;
+    std::string unit;
     ControlKind kind = ControlKind::Toggle;
     bool known = false;
     bool boolean = false;
