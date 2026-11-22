@@ -1,4 +1,5 @@
 #include "home_ui.h"
+#include "home_ui_layout.h"
 #include "home_ui_font.h"
 #include "vendor/qrcodegen/qrcodegen.h"
 #include <stdio.h>
@@ -13,15 +14,18 @@ static void rect(uint8_t *f,int x,int y,int w,int h,bool black)
         if(black)f[yy*100+xx/8]|=mask;else f[yy*100+xx/8]&=(uint8_t)~mask;
     }
 }
-static void box(uint8_t *f,int x,int y,int w,int h)
-{ rect(f,x,y,w,1,true);rect(f,x,y+h-1,w,1,true);rect(f,x,y,1,h,true);rect(f,x+w-1,y,1,h,true); }
-
 static unsigned utf8(const char **s)
 {
     const unsigned char *p=(const unsigned char *)*s;
-    unsigned code=*p++;
-    if(code>=0xc2&&code<0xe0&&(*p&0xc0)==0x80){code=((code&31)<<6)|(*p++&63);}
+    unsigned code=*p++,extra=0;
+    if(code>=0xc2&&code<=0xdf){code&=31;extra=1;}
+    else if(code>=0xe0&&code<=0xef){code&=15;extra=2;}
+    else if(code>=0xf0&&code<=0xf4){code&=7;extra=3;}
     else if(code>=128)code='?';
+    for(unsigned i=0;i<extra;++i){
+        if((*p&0xc0)!=0x80){code='?';break;}
+        code=(code<<6)|(*p++&63);
+    }
     *s=(const char *)p;return code;
 }
 static const home_font_glyph_t *glyph(const home_font_t *font,unsigned code)
@@ -39,6 +43,10 @@ static int text_width(const char *s,const home_font_t *font)
 static bool text(uint8_t *f,int x,int y,const char *s,const home_font_t *font,bool black,int max_width)
 {
     if(text_width(s,font)>max_width||y<0||y+font->height>480)return false;
+#ifdef HOME_UI_LAYOUT_CHECK
+    extern void home_ui_check_text(int,int,int,int);
+    home_ui_check_text(x,y,text_width(s,font),font->height);
+#endif
     while(*s){
         const home_font_glyph_t *g=glyph(font,utf8(&s));if(!g)return false;
         unsigned stride=(g->width+7)/8;
@@ -48,41 +56,27 @@ static bool text(uint8_t *f,int x,int y,const char *s,const home_font_t *font,bo
     }
     return true;
 }
-static const char *device_name(unsigned d)
-{
-    static const char *names[]={"Свет · гостиная","Свет · кухня","Отопление","Шторы"};
-    return d<4?names[d]:"?";
-}
-static void device_state(const home_ui_t *u,unsigned d,char *s,size_t n)
-{
-    if(d<2)snprintf(s,n,"%s",u->light_on[d]?"Включён":"Выключен");
-    else if(d==2){if(u->heat_on)snprintf(s,n,"%u °C · демо",(unsigned)u->temperature);else snprintf(s,n,"Выключено");}
-    else if(u->curtains==100)snprintf(s,n,"Открыты");
-    else if(!u->curtains)snprintf(s,n,"Закрыты");
-    else snprintf(s,n,"Открыто: %u%%",(unsigned)u->curtains);
-}
-static bool device_card(uint8_t *f,const home_ui_t *u,unsigned d,int x,int y)
-{
-    box(f,x,y,240,138);char value[64];device_state(u,d,value,sizeof(value));
-    bool ok=text(f,x+14,y+8,device_name(d),&home_font_20,true,212);
-    return text(f,x+14,y+40,value,&home_font_18,true,212)&&ok;
-}
-
 /* Clip external names instead of rejecting a complete frame. */
 static bool fit(uint8_t *f,int x,int y,const char *s,const home_font_t *font,bool black,int width)
 {
-    char clipped[256];size_t n=0;int used=0;
+    char clipped[256];size_t n=0;
     while(*s&&n+5<sizeof(clipped)){
-        const char *start=s;unsigned cp=utf8(&s);
-        const home_font_glyph_t *g=glyph(font,cp);
+        const char *start=s;unsigned cp=utf8(&s);const home_font_glyph_t *g=glyph(font,cp);
         if(!g)g=glyph(font,'?');
         if(!g)continue;
-        if(used+g->width>width-18){memcpy(clipped+n,"...",3);n+=3;break;}
         if(g->code==cp){size_t bytes=(size_t)(s-start);memcpy(clipped+n,start,bytes);n+=bytes;}
         else clipped[n++]='?';
-        used+=g->width;
     }
-    clipped[n]=0;return text(f,x,y,clipped,font,black,width);
+    clipped[n]=0;
+    if(text_width(clipped,font)<=width)return text(f,x,y,clipped,font,black,width);
+    int used=0,dots=text_width("...",font);const char *cursor=clipped;size_t keep=0;
+    while(*cursor){
+        const char *start=cursor;const home_font_glyph_t *g=glyph(font,utf8(&cursor));
+        if(used+g->width+dots>width)break;
+        used+=g->width;keep+=(size_t)(cursor-start);
+    }
+    if(dots<=width){memcpy(clipped+keep,"...",4);}else clipped[keep]=0;
+    return text(f,x,y,clipped,font,black,width);
 }
 /* Integer modules and a four-module quiet zone: scan the physical E-Ink,
  * never a scaled/antialiased bitmap. Scratch stays below 1 KB on this task. */
@@ -120,20 +114,6 @@ static void rounded(uint8_t *f,int x,int y,int w,int h,int r,bool fill)
         rect(f,x+r+xx,y+h-1-r-yy,1,1,true);rect(f,x+w-1-r-xx,y+h-1-r-yy,1,1,true);
     }
 }
-static void line(uint8_t *f,int x,int y,int x1,int y1)
-{
-    int dx=x1>x?x1-x:x-x1,sx=x<x1?1:-1,dy=y1>y?y-y1:y1-y,sy=y<y1?1:-1,err=dx+dy;
-    for(;;){rect(f,x,y,1,1,true);if(x==x1&&y==y1)break;int e=2*err;if(e>=dy){err+=dy;x+=sx;}if(e<=dx){err+=dx;y+=sy;}}
-}
-static void circle(uint8_t *f,int cx,int cy,int r)
-{
-    int x=r,y=0,err=1-r;
-    while(x>=y){
-        rect(f,cx+x,cy+y,1,1,true);rect(f,cx+y,cy+x,1,1,true);rect(f,cx-y,cy+x,1,1,true);rect(f,cx-x,cy+y,1,1,true);
-        rect(f,cx-x,cy-y,1,1,true);rect(f,cx-y,cy-x,1,1,true);rect(f,cx+y,cy-x,1,1,true);rect(f,cx+x,cy-y,1,1,true);
-        ++y;if(err<0)err+=2*y+1;else{--x;err+=2*(y-x)+1;}
-    }
-}
 static bool centered(uint8_t *f,int x,int y,int width,const char *label,const home_font_t *font,bool black)
 {
     int actual=text_width(label,font);
@@ -142,145 +122,180 @@ static bool centered(uint8_t *f,int x,int y,int width,const char *label,const ho
 }
 static void value_text(char *out,size_t cap,const home_live_device_t *d,double value)
 { snprintf(out,cap,"%g%s%s",value,d->unit[0]?" ":"",d->unit); }
-static void device_icon(uint8_t *f,home_device_icon_t icon)
-{
-    const int x=166,y=184;
-    if(icon==HOME_ICON_LIGHT){
-        circle(f,x,y,55);circle(f,x,y,56);
-        line(f,136,232,136,258);line(f,136,258,196,258);line(f,196,258,196,232);
-        line(f,145,269,187,269);line(f,156,258,156,269);line(f,176,258,176,269);
-        const int rays[8][4]={{0,-73,0,-85},{51,-51,60,-60},{73,0,85,0},{51,51,60,60},
-            {-51,51,-60,60},{-73,0,-85,0},{-51,-51,-60,-60},{0,0,0,0}};
-        for(unsigned i=0;i<7;++i)line(f,x+rays[i][0],y+rays[i][1],x+rays[i][2],y+rays[i][3]);
-    }else if(icon==HOME_ICON_HEAT){
-        rounded(f,148,112,36,124,18,false);circle(f,166,238,32);circle(f,166,238,31);
-        rect(f,162,156,8,82,true);circle(f,166,238,14);
-        for(int i=0;i<4;++i)line(f,196,134+i*24,210,134+i*24);
-    }else if(icon==HOME_ICON_CURTAIN){
-        rounded(f,98,122,136,140,8,false);line(f,90,116,242,116);line(f,166,123,166,261);
-        for(int i=0;i<4;++i){line(f,112+i*12,124,112+i*12,250);line(f,184+i*12,124,184+i*12,250);}
-    }else{
-        circle(f,x,y+8,60);circle(f,x,y+8,59);rect(f,144,118,44,60,false);
-        rect(f,164,116,4,80,true);line(f,122,151,111,163);line(f,210,151,221,163);
-    }
-}
-static bool account_page(const home_ui_t *u)
-{ return u->page==HOME_PAGE_ACCOUNT; }
 static const char *subtitle(const home_ui_t *u)
 {
     const home_live_data_t *l=u->live;
-    if(l->pending)return "Отправка команды...";
-    if(!l->online)return l->loaded?"Сохранённые данные · нет сети":"Нет домашней сети";
+    if(!l)return "Демонстрация · изменения только на панели";
+    if(l->pending)return "Ожидаем подтверждение команды";
+    if(!l->online)return l->loaded?"Нет сети · показаны последние данные":"Нет домашней сети";
     if(!l->time_ready)return "Синхронизация времени для HTTPS";
+    if(l->command_failed)return "Результат команды не подтверждён · проверьте состояние";
     if(l->message[0]&&strcmp(l->message,"Устройства обновлены")&&strcmp(l->message,"Аккаунт подключён"))return l->message;
-    if(u->page==HOME_PAGE_HOME)return "Быстрые действия";
+    if(u->page==HOME_PAGE_HOME)return "Устройства вашего дома";
     if(u->page==HOME_PAGE_ROOMS)return "Выберите комнату";
     if(u->page==HOME_PAGE_SCENES)return "Сценарии вашего дома";
     if(u->page==HOME_PAGE_ROOM)return "Устройства комнаты";
+    if(u->page==HOME_PAGE_DEVICE)return "Новое значение отправится после применения";
+    if(u->page==HOME_PAGE_SETTINGS)return "Параметры панели";
     return "";
+}
+/* Two fixed header lines for a long device name, with UTF-8-safe clipping. */
+static bool detail_title(uint8_t *f,const char *title,int width)
+{
+    if(text_width(title,&home_font_28)<=width)return text(f,160,8,title,&home_font_28,true,width);
+    char first[256];size_t n=0,split=0;int used=0;const char *s=title;
+    while(*s&&n+5<sizeof(first)){
+        const char *start=s;unsigned cp=utf8(&s);const home_font_glyph_t *g=glyph(&home_font_20_bold,cp);
+        if(!g)g=glyph(&home_font_20_bold,'?');
+        if(used+g->width>width)break;
+        size_t bytes=(size_t)(s-start);memcpy(first+n,start,bytes);n+=bytes;used+=g->width;
+        if(cp==' ')split=n;
+    }
+    if(!n)return fit(f,160,4,title,&home_font_20_bold,true,width);
+    if(*s&&split)n=split;
+    first[n]=0;const char *rest=title+n;
+    while(*rest==' ')++rest;
+    bool ok=fit(f,160,4,first,&home_font_20_bold,true,width);
+    return fit(f,160,32,rest,&home_font_20_bold,true,width)&&ok;
+}
+static bool header(uint8_t *f,const home_ui_t *u,const char *title)
+{
+    bool detail=u->page==HOME_PAGE_DEVICE||u->page==HOME_PAGE_SETTINGS||u->page==HOME_PAGE_ACCOUNT||u->page==HOME_PAGE_NETWORK;
+    bool back=detail||u->page==HOME_PAGE_ROOM;
+    int width=u->page==HOME_PAGE_DEVICE?448:detail?616:back?304:440;
+    bool ok=u->page==HOME_PAGE_DEVICE?detail_title(f,title,width):fit(f,back?160:24,8,title,&home_font_28,true,width);
+    rect(f,24,UI_HEADER_LINE,752,1,true);rect(f,0,UI_FOOTER,800,1,true);
+    unsigned total=u->live?home_ui_tile_count(u):0;
+    bool list=u->page==HOME_PAGE_HOME||u->page==HOME_PAGE_ROOMS||u->page==HOME_PAGE_ROOM||u->page==HOME_PAGE_SCENES;
+    ok&=fit(f,24,UI_STATUS_Y,subtitle(u),&home_font_18,true,list?640:752);
+    if(list&&total){
+        char page[32];snprintf(page,sizeof(page),"%u / %u",u->offset/HOME_UI_PAGE_SIZE+1,(total+HOME_UI_PAGE_SIZE-1)/HOME_UI_PAGE_SIZE);
+        ok&=centered(f,688,UI_STATUS_Y,88,page,&home_font_18,true);
+    }
+    return ok;
+}
+static bool draw_device_body(uint8_t *f,const home_ui_t *u,const home_live_device_t *d,double draft)
+{
+    bool ok=true;
+    if(d->has_range){
+        char value[64],actual[120];
+        ok&=fit(f,24,112,d->range_name,&home_font_28,true,472);
+        snprintf(value,sizeof(value),"Шаг: %g%s%s",d->step,d->unit[0]?" ":"",d->unit);
+        ok&=fit(f,552,120,value,&home_font_18,true,224);
+        value_text(value,sizeof(value),d,draft);
+        /* The numeric font is intentionally limited. Other unit alphabets fall back. */
+        const home_font_t *font=text_width(value,&home_font_48)<=240?&home_font_48:&home_font_28;
+        ok&=centered(f,280,UI_VALUE_Y,240,value,font,true);
+        value_text(value,sizeof(value),d,d->value);
+        snprintf(actual,sizeof(actual),"%s: %s",u->live&&(!u->live->online||home_ui_device_failed(u))?"Последнее значение":"На устройстве",value);
+        ok&=centered(f,24,260,752,actual,&home_font_20,true);
+    }else{
+        ok&=fit(f,24,128,d->has_toggle?"Управление питанием":"Состояние устройства",&home_font_28,true,752);
+        ok&=fit(f,24,192,d->available?d->state:"Недоступно",&home_font_28,true,752);
+        ok&=fit(f,24,296,d->has_toggle?"Кнопка питания находится справа вверху":"Доступен просмотр показаний",&home_font_20,true,752);
+    }
+    return ok;
+}
+static bool draw_controls(uint8_t *f,const home_ui_t *u,const home_live_device_t *device)
+{
+    home_ui_control_t controls[24];unsigned n=home_ui_controls(u,controls,24);bool ok=true;
+    for(unsigned i=0;i<n;++i){
+        const home_ui_control_t *c=&controls[i];char label[64];const char *caption=c->label;
+        if(c->preset&&device){value_text(label,sizeof(label),device,home_ui_preset_value(device,c->preset-1));caption=label;}
+        if(!caption)continue;
+        bool fill=c->filled&&c->action!=0;
+        rounded(f,c->x,c->y,c->w,c->h,8,fill);
+        const home_font_t *font=c->action?&home_font_20_bold:&home_font_18;
+        ok&=centered(f,c->x+8,c->y+(c->h-font->height)/2,c->w-16,caption,font,!fill);
+    }
+    return ok;
 }
 static bool live_render(uint8_t *f,size_t length,const home_ui_t *u)
 {
-    if(length!=HOME_UI_BYTES||!u->live)return false;
     const home_live_data_t *l=u->live;memset(f,0,length);bool ok=true;
     bool device=u->page==HOME_PAGE_DEVICE&&u->device<l->device_count;
-    bool detail=device||account_page(u)||u->page==HOME_PAGE_NETWORK;
     const char *title=u->page==HOME_PAGE_HOME?"Мой дом":u->page==HOME_PAGE_ROOMS?"Комнаты":u->page==HOME_PAGE_SCENES?"Сценарии":
         u->page==HOME_PAGE_ROOM&&u->room<l->room_count?l->rooms[u->room].name:
-        device?l->devices[u->device].name:account_page(u)?"Яндекс Дом":u->page==HOME_PAGE_NETWORK?"Подключение":"Настройки";
-    ok&=fit(f,detail?148:24,8,title,&home_font_28,true,detail?430:450);
-    if(device)ok&=fit(f,610,22,l->devices[u->device].available?l->devices[u->device].state:"Недоступно",&home_font_18,true,166);
-    else if(!detail){int x=u->page==HOME_PAGE_SETTINGS||u->page==HOME_PAGE_ROOM?560:610;ok&=text(f,x,20,l->online?"Wi-Fi":"Нет сети",&home_font_18,true,104);}
-    rect(f,24,detail?70:64,752,1,true);rect(f,0,420,800,1,true);
-    bool list=u->page==HOME_PAGE_HOME||u->page==HOME_PAGE_ROOM||u->page==HOME_PAGE_ROOMS||u->page==HOME_PAGE_SCENES;
-    unsigned total=home_ui_tile_count(u);bool pages=list&&total>6;
-    if(list){
-        ok&=fit(f,24,72,subtitle(u),&home_font_18,true,pages?520:752);
-        if(pages){char page[32];snprintf(page,sizeof(page),"%u / %u",u->offset/6+1,(total+5)/6);ok&=centered(f,554,73,60,page,&home_font_18,true);}
-    }
+        device?l->devices[u->device].name:u->page==HOME_PAGE_ACCOUNT?"Яндекс Дом":u->page==HOME_PAGE_NETWORK?"Подключение":"Настройки";
+    ok&=header(f,u,title);
     if(u->page==HOME_PAGE_SETTINGS){
-        const char *labels[]={"Wi-Fi","Яндекс Дом","Тема","Картина"};
-        const char *values[]={l->ip[0]?l->ip:"Нет сети",l->authorized?"Подключён":"Требуется вход",u->dark_theme?"Тёмная":"Светлая","Возврат через 45 секунд"};
+        const char *labels[]={"Домашняя сеть","Яндекс Дом","Тема","Картина"};
+        const char *values[]={l->ip[0]?l->ip:"Нет сети",l->authorized?"Аккаунт подключён":"Требуется вход",u->dark_theme?"Тёмная":"Светлая","Возврат через 45 с"};
         for(unsigned i=0;i<4;++i){
-            int y=80+80*(int)i;
-            ok&=text(f,24,y+3,labels[i],&home_font_20_bold,true,300);
-            ok&=fit(f,356,y+8,values[i],&home_font_18,true,252);
-            rect(f,24,y+72,752,1,true);
+            int y=home_ui_row_y(i);
+            ok&=text(f,24,y+14,labels[i],&home_font_20_bold,true,312);
+            ok&=fit(f,360,y+16,values[i],&home_font_18,true,232);
+            if(i<3)rect(f,24,y+64,752,1,true);
         }
-    }else if(account_page(u)){
-        ok&=fit(f,24,82,subtitle(u),&home_font_18,true,752);
+    }else if(u->page==HOME_PAGE_ACCOUNT){
         if(l->waiting){
-            bool qr=qr_code(f,532,132,240,l->url);
-            ok&=text(f,24,160,qr?"Наведите камеру на QR":"Откройте ссылку на телефоне",&home_font_20,true,480);
-            ok&=text(f,24,202,"Введите код на странице Яндекса:",&home_font_20,true,480);
-            char code[96];snprintf(code,sizeof(code),"Код: %s",l->code);ok&=fit(f,24,244,code,&home_font_28,true,480);
-            ok&=fit(f,24,286,l->url,&home_font_18,true,480);
+            bool qr=qr_code(f,532,128,240,l->url);
+            ok&=text(f,24,140,qr?"Наведите камеру на QR":"Откройте ссылку на телефоне",&home_font_20_bold,true,480);
+            char code[96];snprintf(code,sizeof(code),"Код: %s",l->code);ok&=fit(f,24,198,code,&home_font_28,true,480);
+            ok&=fit(f,24,254,l->url,&home_font_20,true,480);
+            ok&=text(f,24,304,"Введите код на странице Яндекса",&home_font_18,true,480);
         }else{
-            ok&=text(f,24,150,l->authorized?"Аккаунт подключён":"Подключите свой умный дом",&home_font_28,true,752);
-            ok&=text(f,24,214,"Вход подтверждается на телефоне",&home_font_20,true,752);
-            if(l->authorized)ok&=text(f,24,264,"Состояния и команды приходят из Яндекса",&home_font_18,true,752);
+            ok&=text(f,24,142,l->authorized?"Аккаунт подключён":"Подключите свой умный дом",&home_font_28,true,752);
+            ok&=text(f,24,210,"Вход подтверждается на телефоне",&home_font_20,true,752);
+            if(l->authorized)ok&=text(f,24,252,"Состояния и команды приходят из Яндекса",&home_font_18,true,752);
         }
     }else if(u->page==HOME_PAGE_NETWORK){
-        ok&=text(f,24,106,"Домашняя сеть",&home_font_20_bold,true,752);
-        ok&=fit(f,356,108,l->ip[0]?l->ip:"Нет подключения",&home_font_20,true,420);
-        ok&=text(f,24,174,"Загрузка картины",&home_font_20_bold,true,752);
+        ok&=text(f,24,120,"Домашняя сеть",&home_font_20_bold,true,300);
+        ok&=fit(f,356,120,l->ip[0]?l->ip:"Нет подключения",&home_font_20,true,420);
+        ok&=text(f,24,190,"Загрузка картины",&home_font_20_bold,true,300);
         char address[96];snprintf(address,sizeof(address),"http://%s",l->ip[0]?l->ip:"192.168.4.1");
-        ok&=fit(f,356,176,address,&home_font_20,true,420);
-        ok&=text(f,24,252,"Через точку доступа панели:",&home_font_20,true,752);
-        ok&=text(f,24,292,"http://192.168.4.1",&home_font_28,true,752);
+        ok&=fit(f,356,190,address,&home_font_20,true,420);
+        ok&=text(f,24,266,"Через точку доступа панели:",&home_font_20,true,752);
+        ok&=text(f,24,310,"http://192.168.4.1",&home_font_28,true,752);
         ok&=text(f,24,366,"Откройте адрес в браузере телефона",&home_font_18,true,752);
     }else if(!l->authorized){
         ok&=text(f,80,152,"Подключите свой умный дом",&home_font_28,true,650);
         ok&=text(f,80,310,"Вход подтверждается на телефоне",&home_font_20,true,650);
-    }else if(list){
+    }else if(device){
+        ok&=draw_device_body(f,u,&l->devices[u->device],u->live_draft);
+    }else{
         home_ui_tile_t tiles[6];unsigned count=home_ui_tiles(u,tiles);
         for(unsigned i=0;i<count;++i){
-            unsigned slot=tiles[i].slot;int x=24+256*(int)(i%3),y=110+150*(int)(i/3);
-            const char *name,*state;char info[96];
-            if(tiles[i].kind==HOME_TILE_DEVICE){name=l->devices[slot].name;state=l->devices[slot].available?l->devices[slot].state:"Недоступно";}
-            else if(tiles[i].kind==HOME_TILE_SCENE){name=l->scenes[slot].name;state="Сценарий";}
-            else{
-                unsigned devices=0;for(unsigned d=0;d<l->device_count;++d)if(l->devices[d].room==slot)++devices;
-                snprintf(info,sizeof(info),"Устройств: %u",devices);name=l->rooms[slot].name;state=info;
+            unsigned slot=tiles[i].slot;int y=home_ui_row_y(i);
+            if(tiles[i].kind==HOME_TILE_DEVICE){
+                const home_live_device_t *d=&l->devices[slot];
+                ok&=fit(f,24,y,d->name,&home_font_20_bold,true,376);
+                ok&=fit(f,24,y+30,d->room<l->room_count?l->rooms[d->room].name:"Без комнаты",&home_font_18,true,376);
+                char value[64];const char *state=d->available?d->state:"Нет связи";
+                if(d->available){
+                    if(d->has_toggle&&!d->on)state="Выкл.";
+                    else if(d->has_range){value_text(value,sizeof(value),d,d->value);state=value;}
+                    else if(d->has_toggle)state="Вкл.";
+                }
+                ok&=fit(f,416,y+14,state,&home_font_20,true,104);
+            }else{
+                const char *name=tiles[i].kind==HOME_TILE_ROOM?l->rooms[slot].name:l->scenes[slot].name;
+                ok&=fit(f,24,y+12,name,&home_font_20_bold,true,496);
             }
-            rounded(f,x,y,240,138,10,false);
-            ok&=fit(f,x+14,y+3,name,&home_font_20_bold,true,212);
-            ok&=fit(f,x+14,y+33,state,&home_font_18,true,212);
+            if(i<3)rect(f,24,y+64,752,1,true);
         }
-        if(!count)ok&=text(f,48,170,!l->loaded?"Загружаем устройства...":u->page==HOME_PAGE_ROOMS?"Комнаты не найдены":u->page==HOME_PAGE_SCENES?"Сценарии не найдены":"В этой комнате нет устройств",&home_font_20,true,704);
-    }else if(device){
-        const home_live_device_t *d=&l->devices[u->device];device_icon(f,d->icon);
-        ok&=centered(f,24,286,292,d->room<l->room_count?l->rooms[d->room].name:"Без комнаты",&home_font_20_bold,true);
-        const char *state=!d->available?"Недоступно":subtitle(u);
-        if(state&&state[0])ok&=fit(f,346,76,state,&home_font_18,true,430);
-        if(d->has_range){
-            char value[64];ok&=fit(f,346,96,d->range_name,&home_font_20_bold,true,280);
-            snprintf(value,sizeof(value),"Шаг %g%s%s",d->step,d->unit[0]?" ":"",d->unit);ok&=fit(f,646,101,value,&home_font_18,true,130);
-            value_text(value,sizeof(value),d,u->live_draft);ok&=centered(f,346,128,430,value,&home_font_48,true);
-            char actual[96];value_text(value,sizeof(value),d,d->value);snprintf(actual,sizeof(actual),"На устройстве: %s",value);
-            ok&=centered(f,436,230,250,actual,&home_font_18,true);
-        }else{
-            ok&=text(f,346,112,d->has_toggle?"Управление питанием":"Состояние устройства",&home_font_20_bold,true,430);
-            ok&=fit(f,346,176,d->state,&home_font_28,true,430);
-            ok&=text(f,346,280,d->has_toggle?"Выберите действие слева":"Доступен просмотр показаний",&home_font_18,true,430);
-        }
+        if(!count)ok&=fit(f,48,170,!l->loaded?"Загружаем устройства...":u->page==HOME_PAGE_ROOMS?"Комнаты не найдены":u->page==HOME_PAGE_SCENES?"Сценарии не найдены":"Устройства не найдены",&home_font_20,true,704);
     }
-    home_ui_control_t controls[24];unsigned n=home_ui_controls(u,controls,24);
-    for(unsigned i=0;i<n;++i){
-        const home_ui_control_t *c=&controls[i];char label[48];const char *caption=c->label;
-        if(c->preset&&device){value_text(label,sizeof(label),&l->devices[u->device],home_ui_preset_value(&l->devices[u->device],c->preset-1));caption=label;}
-        if(!caption)continue;
-        bool fill=c->filled&&c->action!=0;rounded(f,c->x,c->y,c->w,c->h,c->w<80?7:6,fill);
-        const home_font_t *font=c->action?&home_font_20:&home_font_18;
-        ok&=centered(f,c->x+10,c->y+(c->h-font->height)/2,c->w-20,caption,font,!fill);
-    }
+    ok&=draw_controls(f,u,device?&l->devices[u->device]:NULL);
     if(u->dark_theme){
         for(size_t i=0;i<length;++i)f[i]^=0xff;
-        if(account_page(u)&&l->waiting)qr_code(f,532,132,240,l->url);
+        if(u->page==HOME_PAGE_ACCOUNT&&l->waiting)qr_code(f,532,128,240,l->url);
     }
     return ok;
 }
-
+static void demo_device(const home_ui_t *u,unsigned d,home_live_device_t *out)
+{
+    static const char *names[]={"Свет в гостиной","Свет на кухне","Отопление","Шторы"};
+    *out=(home_live_device_t){.available=true,.has_toggle=true,.has_range=true,.minimum=d==2?16:0,.maximum=d==2?30:100,.step=d==2?1:d<2?10:25};
+    snprintf(out->name,sizeof(out->name),"%s",names[d]);
+    snprintf(out->range_name,sizeof(out->range_name),"%s",d<2?"Яркость":d==2?"Температура":"Открытие штор");
+    snprintf(out->unit,sizeof(out->unit),"%s",d==2?"°C":"%");
+    out->on=d<2?u->light_on[d]:d==2?u->heat_on:u->curtains>0;
+    out->value=d<2?u->brightness[d]:d==2?u->temperature:u->curtains;
+    if(d<2)snprintf(out->state,sizeof(out->state),"%s",out->on?"Вкл.":"Выкл.");
+    else if(d==2)snprintf(out->state,sizeof(out->state),"%u °C",u->temperature);
+    else snprintf(out->state,sizeof(out->state),"%s",u->curtains?"Открыты":"Закрыты");
+}
 bool home_ui_render(uint8_t *f,size_t length,const home_ui_t *u)
 {
     if(!f||!u||length!=HOME_UI_BYTES||u->page>HOME_PAGE_NETWORK)return false;
@@ -288,57 +303,34 @@ bool home_ui_render(uint8_t *f,size_t length,const home_ui_t *u)
     if(u->room>2||u->device>3)return false;
     memset(f,0,length);bool ok=true;
     static const char *rooms[]={"Гостиная","Кухня","Спальня"};
+    static const unsigned devices[3][2]={{0,3},{1,4},{2,4}};
+    home_live_device_t d;demo_device(u,u->device,&d);
     const char *title=u->page==HOME_PAGE_HOME?"Мой дом":u->page==HOME_PAGE_ROOMS?"Комнаты":
-        u->page==HOME_PAGE_ROOM?rooms[u->room]:u->page==HOME_PAGE_SCENES?"Сценарии":
-        u->page==HOME_PAGE_DEVICE?device_name(u->device):"Настройки";
-    ok&=text(f,24,8,title,&home_font_28,true,450);
-    ok&=text(f,520,20,"ДЕМО",&home_font_18,true,90);
-    rect(f,24,64,752,1,true);rect(f,0,420,800,2,true);
-    const char *subtitle=u->page==HOME_PAGE_HOME?"Быстрые действия":u->page==HOME_PAGE_ROOMS?"Выберите комнату":
-        u->page==HOME_PAGE_SCENES?"Демонстрационные сценарии":u->page==HOME_PAGE_DEVICE?"Демонстрационное управление":
-        u->page==HOME_PAGE_ROOM?"Устройства комнаты":"Параметры панели";
-    ok&=text(f,24,72,subtitle,&home_font_18,true,752);
-    if(u->page==HOME_PAGE_HOME){
-        for(unsigned d=0;d<4;++d)ok&=device_card(f,u,d,24+256*(int)(d%3),104+150*(int)(d/3));
-        const char *scenes[]={"Я дома","Уйти из дома"};
-        for(unsigned i=0;i<2;++i){
-            int x=280+256*(int)i;box(f,x,254,240,138);
-            ok&=text(f,x+14,262,scenes[i],&home_font_20,true,212);
-            ok&=text(f,x+14,294,u->last_scene==i+1?"Демо: выбран":"Сценарий",&home_font_18,true,212);
+        u->page==HOME_PAGE_ROOM?rooms[u->room]:u->page==HOME_PAGE_SCENES?"Сценарии":u->page==HOME_PAGE_DEVICE?d.name:"Настройки";
+    ok&=header(f,u,title);
+    if(u->page==HOME_PAGE_HOME||u->page==HOME_PAGE_ROOM){
+        unsigned count=u->page==HOME_PAGE_HOME?4:devices[u->room][1]<4?2:1;
+        for(unsigned i=0;i<count;++i){
+            unsigned slot=u->page==HOME_PAGE_HOME?i:devices[u->room][i];demo_device(u,slot,&d);int y=home_ui_row_y(i);
+            ok&=text(f,24,y,d.name,&home_font_20_bold,true,376);
+            ok&=text(f,24,y+30,rooms[slot==1?1:slot==2?2:0],&home_font_18,true,376);
+            ok&=fit(f,416,y+14,d.state,&home_font_20,true,104);
+            if(i<3)rect(f,24,y+64,752,1,true);
         }
-    }else if(u->page==HOME_PAGE_ROOMS){
-        ok&=text(f,24,246,"Набор комнат и устройств демонстрационный.",&home_font_20,true,752);
-    }else if(u->page==HOME_PAGE_ROOM){
-        static const unsigned devices[3][2]={{0,3},{1,4},{2,4}};
-        for(unsigned i=0;i<2;++i)if(devices[u->room][i]<4)ok&=device_card(f,u,devices[u->room][i],24+256*(int)i,116);
-    }else if(u->page==HOME_PAGE_SCENES){
-        box(f,24,116,368,202);box(f,408,116,368,202);
-        ok&=text(f,40,136,"Я дома",&home_font_28,true,328);
-        ok&=text(f,424,136,"Уйти из дома",&home_font_28,true,328);
-        ok&=text(f,40,188,"Свет, тепло, открытые шторы",&home_font_18,true,328);
-        ok&=text(f,424,188,"Выключить свет, закрыть шторы",&home_font_18,true,328);
-    }else if(u->page==HOME_PAGE_DEVICE){
-        char value[64];device_state(u,u->device,value,sizeof(value));
-        ok&=text(f,48,134,value,&home_font_28,true,350);
-        ok&=text(f,48,218,u->device<2?"Яркость":u->device==2?"Температура":"Открытие штор",&home_font_20,true,360);
-        snprintf(value,sizeof(value),u->device==2?"%u °C":"%u%%",(unsigned)u->draft);
-        int width=text_width(value,&home_font_28);
-        ok&=text(f,240-width/2,292,value,&home_font_28,true,176);
-        ok&=text(f,48,366,"Изменения только в демонстрационной модели",&home_font_18,true,704);
+    }else if(u->page==HOME_PAGE_DEVICE)ok&=draw_device_body(f,u,&d,u->draft);
+    else if(u->page==HOME_PAGE_ROOMS||u->page==HOME_PAGE_SCENES){
+        const char *scenes[]={"Я дома","Уйти из дома"};
+        for(unsigned i=0;i<(u->page==HOME_PAGE_ROOMS?3U:2U);++i)
+            ok&=text(f,24,home_ui_row_y(i)+12,u->page==HOME_PAGE_ROOMS?rooms[i]:scenes[i],&home_font_20_bold,true,496);
     }else if(u->page==HOME_PAGE_SETTINGS){
-        ok&=text(f,24,122,"Возврат к картине: 45 секунд",&home_font_20,true,752);
-        ok&=text(f,24,180,"Умный дом: демонстрационный режим",&home_font_20,true,752);
-        ok&=text(f,24,238,"Загрузка фото: http://192.168.4.1",&home_font_20,true,752);
-        ok&=text(f,24,296,"Первое касание открывает меню",&home_font_20,true,752);
+        const char *labels[]={"Домашняя сеть","Яндекс Дом","Тема","Картина"};
+        for(unsigned i=0;i<4;++i){
+            int y=home_ui_row_y(i);ok&=text(f,24,y+14,labels[i],&home_font_20_bold,true,312);
+            ok&=text(f,360,y+16,i<2?"Демо":i==2?(u->dark_theme?"Тёмная":"Светлая"):"Возврат через 45 с",&home_font_18,true,232);
+        }
     }
-    if(u->page!=HOME_PAGE_DEVICE)ok&=text(f,24,392,"Демонстрация · изменения только на этой панели",&home_font_18,true,752);
-    home_ui_control_t controls[20];unsigned count=home_ui_controls(u,controls,20);
-    for(unsigned i=0;i<count;++i){
-        const home_ui_control_t *c=&controls[i];if(!c->label)continue;
-        rect(f,c->x,c->y,c->w,c->h,c->filled);box(f,c->x,c->y,c->w,c->h);
-        int width=text_width(c->label,&home_font_20);
-        ok&=text(f,c->x+(c->w-width)/2,c->y+(c->h-home_font_20.height)/2,c->label,&home_font_20,!c->filled,c->w-12);
-    }
+    demo_device(u,u->device,&d);ok&=draw_controls(f,u,u->page==HOME_PAGE_DEVICE?&d:NULL);
+    if(u->dark_theme)for(size_t i=0;i<length;++i)f[i]^=0xff;
     return ok;
 }
 

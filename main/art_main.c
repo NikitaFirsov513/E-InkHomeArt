@@ -154,7 +154,7 @@ void app_main(void)
             if(failed){failed->epoch=1;snprintf(failed->message,sizeof(failed->message),"Yandex backend unavailable. Check PSRAM/UART");art_manager_home_update(failed);heap_caps_free(failed);}
         }
     }
-    ESP_LOGI(TAG,"ART UI READY / QR1 THEMES1 / Yandex live home / 45 s return / UART ? h a i t / photo upload has no cooldown");
+    ESP_LOGI(TAG,"ART UI READY / UI_LIST_V2 QR1 THEMES1 / Yandex live home / 45 s return / UART ? h a i t / photo upload has no cooldown");
     int64_t last_live=0,last_touch=0;
     for (;;) {
         char command;

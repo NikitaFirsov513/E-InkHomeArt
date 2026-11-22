@@ -16,6 +16,9 @@ typedef struct { char name[80]; } home_live_name_t;
 typedef struct {
     uint32_t epoch;
     bool online,time_ready,authorized,waiting,pending,loaded,truncated;
+    /* Explicit result state: UI must offer a GET, never retry an uncertain POST. */
+    bool command_failed;
+    uint8_t failed_device; /* HOME_MAX_DEVICES for a scene/non-device command. */
     char ip[16],code[40],url[256],message[256];
     uint8_t device_count,room_count,scene_count;
     home_live_device_t devices[HOME_MAX_DEVICES];

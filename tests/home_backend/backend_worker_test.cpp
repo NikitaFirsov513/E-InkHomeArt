@@ -33,12 +33,13 @@ int xQueueReceive(QueueHandle_t,void *out,unsigned){
  case 2:assert(shown.waiting&&!shown.authorized);now=6;break;
  case 3:now=12;break;
  case 4:assert(shown.authorized&&shown.loaded&&shown.device_count==1&&!shown.devices[0].on&&saves==1);request(HOME_CMD_TOGGLE,shown.epoch,1);break;
- case 5:assert(posts==1&&shown.devices[0].on&&!shown.pending);request(HOME_CMD_TOGGLE,shown.epoch,0);break;
- case 6:assert(posts==2&&!shown.devices[0].on);online=false;request(HOME_CMD_TOGGLE,shown.epoch,1);break;
- case 7:assert(posts==2&&!shown.online);online=true;now=100;break;
- case 8:assert(shown.loaded&&std::string(shown.message)=="Устройства обновлены");request(HOME_CMD_TOGGLE,shown.epoch-1,1);break;
- case 9:assert(posts==2);request(HOME_CMD_LOGOUT);break;
- case 10:assert(!shown.authorized&&!shown.device_count&&saved.empty()&&saves==2&&posts==2);throw Finished{};
+ case 5:assert(posts==1&&shown.devices[0].on&&!shown.pending&&!shown.command_failed);request(HOME_CMD_TOGGLE,shown.epoch,0);break;
+ case 6:assert(posts==2&&!shown.devices[0].on&&shown.command_failed&&shown.failed_device==0);online=false;request(HOME_CMD_TOGGLE,shown.epoch,1);break;
+ case 7:assert(posts==2&&!shown.online&&shown.command_failed);online=true;now=100;break;
+ case 8:assert(shown.loaded&&shown.command_failed);request(HOME_CMD_REFRESH);break;
+ case 9:assert(!shown.command_failed&&posts==2&&std::string(shown.message)=="Устройства обновлены");request(HOME_CMD_TOGGLE,shown.epoch-1,1);break;
+ case 10:assert(posts==2&&shown.command_failed);request(HOME_CMD_LOGOUT);break;
+ case 11:assert(!shown.authorized&&!shown.device_count&&saved.empty()&&saves==2&&posts==2&&!shown.command_failed);throw Finished{};
  }
  if(has_queue){*static_cast<home_command_t *>(out)=queued;has_queue=false;return 1;}return 0;
 }
