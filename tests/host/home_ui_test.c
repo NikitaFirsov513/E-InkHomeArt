@@ -112,7 +112,12 @@ bool home_ui_state_preview(unsigned state,uint8_t *frame,size_t n)
     static home_live_data_t l;live_fixture(&l);l.device_count=8;
     home_ui_t u;home_ui_init(&u);home_ui_set_live(&u,&l);u.active=true;u.page=HOME_PAGE_DEVICE;u.live_draft=75;
     l.devices[0].on=true;l.devices[0].value=65;strcpy(l.devices[0].name,"Свет в гостиной");strcpy(l.devices[0].state,"65 %");
-    if(state==0)u.page=HOME_PAGE_HOME;
+    if(state==0){
+        u.page=HOME_PAGE_HOME;
+        strcpy(l.devices[4].name,"Торшер");strcpy(l.devices[5].name,"Подсветка");
+        l.devices[2].has_toggle=false;l.devices[2].value=22;strcpy(l.devices[2].unit,"°C");
+        l.devices[3].has_toggle=false;l.devices[3].value=100;
+    }
     if(state==1)l.pending=true;
     if(state==2)l.online=false;
     if(state==3){l.command_failed=true;l.failed_device=0;strcpy(l.message,"Нет подтверждения команды. Проверьте устройство");}
@@ -123,7 +128,7 @@ bool home_ui_state_preview(unsigned state,uint8_t *frame,size_t n)
     if(state==8){u.page=HOME_PAGE_HOME;strcpy(l.devices[0].name,"Потолочный свет над обеденным столом");}
     if(state==9)u.page=HOME_PAGE_SCENES;
     if(state==10)u.page=HOME_PAGE_ROOMS;
-    if(state==11){u.page=HOME_PAGE_HOME;u.offset=4;}
+    if(state==11){u.page=HOME_PAGE_HOME;u.offset=HOME_UI_PAGE_SIZE;}
     if(state==12)u.dark_theme=true;
     if(state==13){u.page=HOME_PAGE_HOME;l.device_count=0;}
     return home_ui_render(frame,n,&u);
@@ -138,7 +143,7 @@ static void geometry_tests(void)
         strcpy(l.devices[0].name,"Потолочный свет над обеденным столом");
         strcpy(l.rooms[0].name,"Гостиная с очень длинным названием");
         strcpy(l.message,"Очень длинный статус ответа сервера, который не должен перекрывать кнопки");
-        home_ui_init(&u);home_ui_set_live(&u,&l);u.page=(home_ui_page_t)page;u.offset=offset*4;u.live_draft=75;u.dark_theme=!!(flags&32);
+        home_ui_init(&u);home_ui_set_live(&u,&l);u.page=(home_ui_page_t)page;u.offset=offset*HOME_UI_PAGE_SIZE;u.live_draft=75;u.dark_theme=!!(flags&32);
         checked_frame(&u);++frames;
     }
     for(unsigned kind=0;kind<4;++kind){
@@ -161,13 +166,15 @@ static void geometry_tests(void)
 static void live_tests(void)
 {
     home_ui_t u;home_ui_init(&u);static home_live_data_t l;live_fixture(&l);home_ui_set_live(&u,&l);home_ui_open_menu(&u,0);shown(&u,0);
-    /* Row labels/background are not secondary hidden buttons. */
+    /* Tile labels/background are not secondary hidden buttons. */
     assert(home_ui_target(&u,100,130)==0&&home_ui_target(&u,410,130)==0);
     assert(action_tap(&u,LIVE_TOGGLE,1000));assert(u.command.kind==HOME_CMD_TOGGLE&&u.command.epoch==7&&u.command.slot==0&&u.command.value==1);
     assert(!l.devices[0].on);u.command.kind=HOME_CMD_NONE;shown(&u,2000);
+    /* The sixth tile has its own target; no truncation of the control array. */
+    assert(home_ui_target(&u,736,348)==LIVE_OPEN+5);
     unsigned seen_d[HOME_MAX_DEVICES]={0},seen_s[HOME_MAX_SCENES]={0};
     for(u.offset=0;u.offset<home_ui_tile_count(&u);u.offset+=HOME_UI_PAGE_SIZE){
-        home_ui_tile_t tiles[6];unsigned n=home_ui_tiles(&u,tiles);assert(n<=4);
+        home_ui_tile_t tiles[6];unsigned n=home_ui_tiles(&u,tiles);assert(n<=HOME_UI_PAGE_SIZE);
         for(unsigned i=0;i<n;++i){assert(tiles[i].kind==HOME_TILE_DEVICE);++seen_d[tiles[i].slot];}
     }
     for(unsigned i=0;i<l.device_count;++i)assert(seen_d[i]==1);
@@ -177,26 +184,26 @@ static void live_tests(void)
     for(unsigned i=0;i<l.scene_count;++i)assert(seen_s[i]==1);
     assert(action_tap(&u,LIVE_SCENE,2300)&&u.command.kind==HOME_CMD_SCENE&&u.command.slot==0);
     u.command.kind=HOME_CMD_NONE;shown(&u,2400);assert(action_tap(&u,NAV_HOME,2500));shown(&u,2600);
-    assert(action_tap(&u,LIVE_NEXT,3000)&&u.offset==4);shown(&u,4000);
-    assert(action_tap(&u,LIVE_OPEN+4,5000)&&u.page==HOME_PAGE_DEVICE&&u.device==4);shown(&u,6000);
-    assert(action_tap(&u,PLUS,7000)&&u.live_draft==41&&l.devices[4].value==40);shown(&u,8000);
-    assert(action_tap(&u,APPLY,9000)&&u.command.kind==HOME_CMD_RANGE&&u.command.slot==4&&u.command.value==41);
+    assert(action_tap(&u,LIVE_NEXT,3000)&&u.offset==6);shown(&u,4000);
+    assert(action_tap(&u,LIVE_OPEN+6,5000)&&u.page==HOME_PAGE_DEVICE&&u.device==6);shown(&u,6000);
+    assert(action_tap(&u,PLUS,7000)&&u.live_draft==41&&l.devices[6].value==40);shown(&u,8000);
+    assert(action_tap(&u,APPLY,9000)&&u.command.kind==HOME_CMD_RANGE&&u.command.slot==6&&u.command.value==41);
     u.command.kind=HOME_CMD_NONE;shown(&u,10000);
-    assert(action_tap(&u,LIVE_PRESET+2,10200)&&u.live_draft==75&&u.command.kind==HOME_CMD_NONE&&l.devices[4].value==40);shown(&u,10500);
+    assert(action_tap(&u,LIVE_PRESET+2,10200)&&u.live_draft==75&&u.command.kind==HOME_CMD_NONE&&l.devices[6].value==40);shown(&u,10500);
     assert(action_tap(&u,APPLY,10600)&&u.command.kind==HOME_CMD_RANGE&&u.command.value==75);u.command.kind=HOME_CMD_NONE;shown(&u,10800);
-    assert(action_tap(&u,BACK,10900)&&u.page==HOME_PAGE_HOME&&u.offset==4);shown(&u,11000);
-    assert(action_tap(&u,LIVE_OPEN+4,11100)&&u.device==4);shown(&u,11200);
+    assert(action_tap(&u,BACK,10900)&&u.page==HOME_PAGE_HOME&&u.offset==6);shown(&u,11000);
+    assert(action_tap(&u,LIVE_OPEN+6,11100)&&u.device==6);shown(&u,11200);
     for(unsigned state=0;state<2;++state){
         l.pending=state==0;l.online=state!=1;home_ui_set_live(&u,&l);shown(&u,12000);
         home_ui_control_t controls[24];unsigned count=home_ui_controls(&u,controls,24);
         for(unsigned i=0;i<count;++i)assert(controls[i].action==BACK||controls[i].action==0);
         assert(!tap(&u,400,440,13000)&&u.command.kind==HOME_CMD_NONE);
     }
-    l.online=true;l.pending=false;l.command_failed=true;l.failed_device=4;home_ui_set_live(&u,&l);shown(&u,14000);
+    l.online=true;l.pending=false;l.command_failed=true;l.failed_device=6;home_ui_set_live(&u,&l);shown(&u,14000);
     assert(action_tap(&u,LIVE_REFRESH,15000)&&u.command.kind==HOME_CMD_REFRESH);u.command.kind=HOME_CMD_NONE;
-    l.loaded=false;l.devices[4].available=false;home_ui_set_live(&u,&l);shown(&u,15100);
+    l.loaded=false;l.devices[6].available=false;home_ui_set_live(&u,&l);shown(&u,15100);
     assert(action_tap(&u,LIVE_REFRESH,15200)&&u.command.kind==HOME_CMD_REFRESH);u.command.kind=HOME_CMD_NONE;
-    l.loaded=true;l.devices[4].available=true;
+    l.loaded=true;l.devices[6].available=true;
     /* Other devices do not inherit this failed device's recovery action. */
     u.device=0;home_ui_control_t controls[24];unsigned count=home_ui_controls(&u,controls,24);
     for(unsigned i=0;i<count;++i)assert(controls[i].action!=LIVE_REFRESH);
@@ -227,26 +234,26 @@ static void live_tests(void)
     assert(home_ui_login_preview("",guarded+1,HOME_UI_BYTES));
     char long_url[256];memset(long_url,'a',sizeof(long_url));long_url[255]=0;
     assert(home_ui_login_preview(long_url,guarded+1,HOME_UI_BYTES));
-    puts("PASS: four-row device/scenario pagination, actual slots, draft/apply, pending/offline gating, explicit failure recovery GET, theme and QR quiet zone.");
+    puts("PASS: six-tile device/scenario pagination, actual slots, draft/apply, pending/offline gating, explicit failure recovery GET, theme and QR quiet zone.");
 }
 int main(void)
 {
     live_tests();geometry_tests();
     home_ui_t u;home_ui_init(&u);
     assert(!u.active&&u.light_on[0]);
-    assert(home_ui_touch(&u,1,600,130,0,1000)&&u.active&&u.light_on[0]);
-    shown(&u,2000);home_ui_touch(&u,1,600,130,0,3000);
+    assert(home_ui_touch(&u,1,100,200,0,1000)&&u.active&&u.light_on[0]);
+    shown(&u,2000);home_ui_touch(&u,1,100,200,0,3000);
     assert(!home_ui_touch(&u,0,-1,-1,0,4000)&&u.light_on[0]);
-    assert(tap(&u,600,130,5000)&&!u.light_on[0]);
-    assert(!tap(&u,600,130,6000)&&!u.light_on[0]);
-    shown(&u,7000);assert(tap(&u,600,130,8000)&&u.light_on[0]);shown(&u,9000);
-    home_ui_touch(&u,1,600,130,0,10000);home_ui_touch(&u,1,790,100,0,11000);
+    assert(tap(&u,100,200,5000)&&!u.light_on[0]);
+    assert(!tap(&u,100,200,6000)&&!u.light_on[0]);
+    shown(&u,7000);assert(tap(&u,100,200,8000)&&u.light_on[0]);shown(&u,9000);
+    home_ui_touch(&u,1,100,200,0,10000);home_ui_touch(&u,1,790,100,0,11000);
     assert(!home_ui_touch(&u,0,-1,-1,0,12000)&&u.light_on[0]);
-    home_ui_touch(&u,1,600,130,0,13000);home_ui_touch(&u,2,600,130,0,14000);
+    home_ui_touch(&u,1,100,200,0,13000);home_ui_touch(&u,2,100,200,0,14000);
     assert(!home_ui_touch(&u,0,-1,-1,0,15000)&&u.light_on[0]);
-    home_ui_touch(&u,1,600,130,0,16000);home_ui_touch(&u,1,600,130,1,17000);
+    home_ui_touch(&u,1,100,200,0,16000);home_ui_touch(&u,1,100,200,1,17000);
     assert(!home_ui_touch(&u,0,-1,-1,1,18000)&&u.light_on[0]);
-    home_ui_touch(&u,1,600,130,0,19000);home_ui_cancel_touch(&u);
+    home_ui_touch(&u,1,100,200,0,19000);home_ui_cancel_touch(&u);
     assert(!home_ui_touch(&u,0,-1,-1,0,20000)&&u.light_on[0]);
     assert(action_tap(&u,NAV_ROOMS,21000));shown(&u,22000);
     assert(action_tap(&u,ROOM,23000));shown(&u,24000);
@@ -258,7 +265,7 @@ int main(void)
     assert(home_ui_touch(&u,1,700,450,0,33000)&&u.active&&u.page==HOME_PAGE_HOME);
     shown(&u,34000);assert(!home_ui_touch(&u,0,-1,-1,0,35000)&&u.active);shown(&u,40000);
     assert(!home_ui_tick(&u,40000+HOME_UI_IDLE_US-1));assert(home_ui_tick(&u,40000+HOME_UI_IDLE_US)&&!u.active);
-    home_ui_open_menu(&u,50000);shown(&u,50000);home_ui_touch(&u,1,600,130,0,60000);
+    home_ui_open_menu(&u,50000);shown(&u,50000);home_ui_touch(&u,1,100,200,0,60000);
     assert(!home_ui_tick(&u,60000+HOME_UI_IDLE_US));
     static uint8_t before[HOME_UI_BYTES],after[HOME_UI_BYTES];home_ui_region_t r;
     assert(!home_ui_changed_region(before,after,HOME_UI_BYTES,&r));after[HOME_UI_BYTES-1]=1;

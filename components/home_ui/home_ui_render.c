@@ -205,7 +205,7 @@ static bool draw_controls(uint8_t *f,const home_ui_t *u,const home_live_device_t
         if(!caption)continue;
         bool fill=c->filled&&c->action!=0;
         rounded(f,c->x,c->y,c->w,c->h,8,fill);
-        const home_font_t *font=c->action?&home_font_20_bold:&home_font_18;
+        const home_font_t *font=c->w<=UI_TARGET?&home_font_18:c->action?&home_font_20_bold:&home_font_18;
         ok&=centered(f,c->x+8,c->y+(c->h-font->height)/2,c->w-16,caption,font,!fill);
     }
     return ok;
@@ -256,23 +256,28 @@ static bool live_render(uint8_t *f,size_t length,const home_ui_t *u)
     }else{
         home_ui_tile_t tiles[6];unsigned count=home_ui_tiles(u,tiles);
         for(unsigned i=0;i<count;++i){
-            unsigned slot=tiles[i].slot;int y=home_ui_row_y(i);
+            unsigned slot=tiles[i].slot;int x=home_ui_tile_x(i),y=home_ui_tile_y(i);
+            rounded(f,x,y,UI_TILE_WIDTH,UI_TILE_HEIGHT,8,false);
             if(tiles[i].kind==HOME_TILE_DEVICE){
                 const home_live_device_t *d=&l->devices[slot];
-                ok&=fit(f,24,y,d->name,&home_font_20_bold,true,376);
-                ok&=fit(f,24,y+30,d->room<l->room_count?l->rooms[d->room].name:"Без комнаты",&home_font_18,true,376);
+                ok&=fit(f,x+12,y+2,d->name,&home_font_20_bold,true,216);
+                ok&=fit(f,x+12,y+32,d->room<l->room_count?l->rooms[d->room].name:"Без комнаты",&home_font_18,true,128);
                 char value[64];const char *state=d->available?d->state:"Нет связи";
                 if(d->available){
                     if(d->has_toggle&&!d->on)state="Выкл.";
                     else if(d->has_range){value_text(value,sizeof(value),d,d->value);state=value;}
                     else if(d->has_toggle)state="Вкл.";
                 }
-                ok&=fit(f,416,y+14,state,&home_font_20,true,104);
+                ok&=fit(f,x+156,y+32,state,&home_font_18,true,72);
             }else{
                 const char *name=tiles[i].kind==HOME_TILE_ROOM?l->rooms[slot].name:l->scenes[slot].name;
-                ok&=fit(f,24,y+12,name,&home_font_20_bold,true,496);
+                ok&=fit(f,x+12,y+2,name,&home_font_20_bold,true,216);
+                if(tiles[i].kind==HOME_TILE_ROOM){
+                    unsigned devices=0;for(unsigned d=0;d<l->device_count;++d)if(l->devices[d].room==slot)++devices;
+                    char info[48];snprintf(info,sizeof(info),"Устройств: %u",devices);
+                    ok&=fit(f,x+12,y+32,info,&home_font_18,true,216);
+                }else ok&=text(f,x+12,y+32,"Сценарий",&home_font_18,true,216);
             }
-            if(i<3)rect(f,24,y+64,752,1,true);
         }
         if(!count)ok&=fit(f,48,170,!l->loaded?"Загружаем устройства...":u->page==HOME_PAGE_ROOMS?"Комнаты не найдены":u->page==HOME_PAGE_SCENES?"Сценарии не найдены":"Устройства не найдены",&home_font_20,true,704);
     }
@@ -311,17 +316,21 @@ bool home_ui_render(uint8_t *f,size_t length,const home_ui_t *u)
     if(u->page==HOME_PAGE_HOME||u->page==HOME_PAGE_ROOM){
         unsigned count=u->page==HOME_PAGE_HOME?4:devices[u->room][1]<4?2:1;
         for(unsigned i=0;i<count;++i){
-            unsigned slot=u->page==HOME_PAGE_HOME?i:devices[u->room][i];demo_device(u,slot,&d);int y=home_ui_row_y(i);
-            ok&=text(f,24,y,d.name,&home_font_20_bold,true,376);
-            ok&=text(f,24,y+30,rooms[slot==1?1:slot==2?2:0],&home_font_18,true,376);
-            ok&=fit(f,416,y+14,d.state,&home_font_20,true,104);
-            if(i<3)rect(f,24,y+64,752,1,true);
+            unsigned slot=u->page==HOME_PAGE_HOME?i:devices[u->room][i];demo_device(u,slot,&d);int x=home_ui_tile_x(i),y=home_ui_tile_y(i);
+            rounded(f,x,y,UI_TILE_WIDTH,UI_TILE_HEIGHT,8,false);
+            ok&=fit(f,x+12,y+2,d.name,&home_font_20_bold,true,216);
+            ok&=fit(f,x+12,y+32,rooms[slot==1?1:slot==2?2:0],&home_font_18,true,128);
+            ok&=fit(f,x+156,y+32,d.state,&home_font_18,true,72);
         }
     }else if(u->page==HOME_PAGE_DEVICE)ok&=draw_device_body(f,u,&d,u->draft);
     else if(u->page==HOME_PAGE_ROOMS||u->page==HOME_PAGE_SCENES){
         const char *scenes[]={"Я дома","Уйти из дома"};
-        for(unsigned i=0;i<(u->page==HOME_PAGE_ROOMS?3U:2U);++i)
-            ok&=text(f,24,home_ui_row_y(i)+12,u->page==HOME_PAGE_ROOMS?rooms[i]:scenes[i],&home_font_20_bold,true,496);
+        for(unsigned i=0;i<(u->page==HOME_PAGE_ROOMS?3U:2U);++i){
+            int x=home_ui_tile_x(i),y=home_ui_tile_y(i);
+            rounded(f,x,y,UI_TILE_WIDTH,UI_TILE_HEIGHT,8,false);
+            ok&=fit(f,x+12,y+2,u->page==HOME_PAGE_ROOMS?rooms[i]:scenes[i],&home_font_20_bold,true,216);
+            ok&=text(f,x+12,y+32,u->page==HOME_PAGE_ROOMS?"Комната":"Сценарий",&home_font_18,true,216);
+        }
     }else if(u->page==HOME_PAGE_SETTINGS){
         const char *labels[]={"Домашняя сеть","Яндекс Дом","Тема","Картина"};
         for(unsigned i=0;i<4;++i){

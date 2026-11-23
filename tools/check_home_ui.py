@@ -39,6 +39,6 @@ for dark in [False,True]:
 
 state=lib.home_ui_state_preview
 state.argtypes=render.argtypes;state.restype=ct.c_bool
-for key,name in enumerate(['list','pending','offline','error','long-title','power-only','range-only','read-only','long-list','scenes','rooms','page-2','dark','empty','ready']):
+for key,name in enumerate(['tiles','pending','offline','error','long-title','power-only','range-only','read-only','long-tiles','scenes','rooms','page-2','dark','empty','ready']):
     frame=(ct.c_uint8*48000)();assert state(key,frame,48000),name
-    png(out/('rev2-'+name+'.png'),bytes(frame))
+    png(out/('rev3-'+name+'.png'),bytes(frame))

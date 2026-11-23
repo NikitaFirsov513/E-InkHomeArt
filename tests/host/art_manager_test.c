@@ -96,7 +96,7 @@ int main(int argc,char **argv)
             snprintf(live.devices[0].name,sizeof(live.devices[0].name),"Real lamp");
             snprintf(live.devices[0].state,sizeof(live.devices[0].state),"OFF");
             art_manager_home_update(&live);art_manager_open_menu();run_worker_once();assert(mono_full==1&&last_mono[0]==0xff);
-            art_manager_touch(1,600,130,0,now);art_manager_touch(0,-1,-1,0,now);
+            art_manager_touch(1,100,200,0,now);art_manager_touch(0,-1,-1,0,now);
             assert(home_submits==1&&home_command.kind==HOME_CMD_TOGGLE&&home_command.epoch==2&&home_command.slot==0&&home_command.value==1);
             run_worker_once();assert(mono_partial==0); // A queued command has not changed actual lamp state.
             live.pending=true;art_manager_home_update(&live);run_worker_once();assert(mono_partial==1);
@@ -111,17 +111,17 @@ int main(int argc,char **argv)
             puts("PASS: actual ArtManager live snapshots, queued command without fake state, pending/confirmed partials, unchanged poll suppression and same-photo return.");return 0;
         }
         if(!strcmp(argv[1],"ui")){
-            release_during_mono=true;art_manager_touch(1,600,130,0,now);run_worker_once();
+            release_during_mono=true;art_manager_touch(1,100,200,0,now);run_worker_once();
             art_manager_status(&s);assert(s.menu_visible&&mono_full==1&&refreshes==1);
-            art_manager_touch(1,600,130,0,now);art_manager_touch(0,-1,-1,0,now);run_worker_once();
+            art_manager_touch(1,100,200,0,now);art_manager_touch(0,-1,-1,0,now);run_worker_once();
             assert(mono_partial==1&&mono_full==1); /* Toggle in the displayed HOME. */
             for(unsigned i=0;i<29;++i){
-                art_manager_touch(1,600,130,0,now);art_manager_touch(0,-1,-1,0,now);run_worker_once();
+                art_manager_touch(1,100,200,0,now);art_manager_touch(0,-1,-1,0,now);run_worker_once();
             }
             assert(mono_partial==30&&mono_full==1);
             art_manager_touch(1,100,450,0,now);art_manager_touch(0,-1,-1,0,now);run_worker_once();
             assert(mono_partial==30&&mono_full==1); /* No-op tab never triggers a refresh. */
-            art_manager_touch(1,600,130,0,now);art_manager_touch(0,-1,-1,0,now);run_worker_once();
+            art_manager_touch(1,100,200,0,now);art_manager_touch(0,-1,-1,0,now);run_worker_once();
             assert(mono_partial==30&&mono_full==2); /* Preserve the established prototype budget. */
             /* An interrupted upload destroys the RAM baseline, but not photo. */
             uint8_t *p;assert(art_manager_begin_upload(&p)==ESP_OK);memset(p,0xcc,1000);art_manager_abort_upload();

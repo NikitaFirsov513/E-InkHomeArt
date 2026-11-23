@@ -275,14 +275,14 @@ static void range_controls(home_ui_control_t *out,unsigned cap,unsigned *n,bool 
         if(*n>before)out[*n-1].preset=i+1;
     }
 }
-static void demo_row_controls(const home_ui_t *u,unsigned d,unsigned row,
+static void demo_tile_controls(const home_ui_t *u,unsigned d,unsigned row,
                               home_ui_control_t *out,unsigned cap,unsigned *n)
 {
-    int y=home_ui_row_y(row);
-    if(d==2){add(out,cap,n,OPEN_DEVICE+d,UI_ACTION_X,y,240,UI_TARGET,"Настроить",false);return;}
+    int x=home_ui_tile_x(row),y=home_ui_tile_y(row)+UI_TILE_BUTTON_Y;
+    if(d==2){add(out,cap,n,OPEN_DEVICE+d,x+UI_TILE_PAD,y,216,UI_TARGET,"Настроить",false);return;}
     const char *label=d<2?(u->light_on[d]?"Выключить":"Включить"):u->curtains==100?"Закрыть":"Открыть";
-    add(out,cap,n,TOGGLE_DEVICE+d,UI_ACTION_X,y,144,UI_TARGET,label,d<2&&u->light_on[d]);
-    add(out,cap,n,OPEN_DEVICE+d,UI_MORE_X,y,80,UI_TARGET,"Ещё",false);
+    add(out,cap,n,TOGGLE_DEVICE+d,x+UI_TILE_PAD,y,144,UI_TARGET,label,d<2&&u->light_on[d]);
+    add(out,cap,n,OPEN_DEVICE+d,x+UI_TILE_MORE_X,y,56,UI_TARGET,"Ещё",false);
 }
 unsigned home_ui_controls(const home_ui_t *u,home_ui_control_t *out,unsigned cap)
 {
@@ -291,14 +291,14 @@ unsigned home_ui_controls(const home_ui_t *u,home_ui_control_t *out,unsigned cap
     if(u->room>2||u->device>3)return 0;
     unsigned n=0;chrome(u,out,cap,&n);
     if(u->page==HOME_PAGE_HOME){
-        for(unsigned d=0;d<4;++d)demo_row_controls(u,d,d,out,cap,&n);
+        for(unsigned d=0;d<4;++d)demo_tile_controls(u,d,d,out,cap,&n);
     }else if(u->page==HOME_PAGE_ROOMS){
-        for(unsigned i=0;i<3;++i)add(out,cap,&n,ROOM+i,552,home_ui_row_y(i),224,UI_TARGET,"Открыть",false);
+        for(unsigned i=0;i<3;++i)add(out,cap,&n,ROOM+i,home_ui_tile_x(i)+UI_TILE_PAD,home_ui_tile_y(i)+UI_TILE_BUTTON_Y,216,UI_TARGET,"Открыть",false);
     }else if(u->page==HOME_PAGE_ROOM){
         static const unsigned devices[3][2]={{0,3},{1,4},{2,4}};
-        for(unsigned i=0;i<2;++i)if(devices[u->room][i]<4)demo_row_controls(u,devices[u->room][i],i,out,cap,&n);
+        for(unsigned i=0;i<2;++i)if(devices[u->room][i]<4)demo_tile_controls(u,devices[u->room][i],i,out,cap,&n);
     }else if(u->page==HOME_PAGE_SCENES){
-        for(unsigned i=0;i<2;++i)add(out,cap,&n,SCENE+i,552,home_ui_row_y(i),224,UI_TARGET,"Запустить",u->last_scene==i+1);
+        for(unsigned i=0;i<2;++i)add(out,cap,&n,SCENE+i,home_ui_tile_x(i)+UI_TILE_PAD,home_ui_tile_y(i)+UI_TILE_BUTTON_Y,216,UI_TARGET,"Запустить",u->last_scene==i+1);
     }else if(u->page==HOME_PAGE_DEVICE){
         add(out,cap,&n,TOGGLE_DEVICE+u->device,632,8,144,UI_TARGET,
             u->device<2?(u->light_on[u->device]?"Выключить":"Включить"):
@@ -346,7 +346,7 @@ static unsigned live_controls(const home_ui_t *u,home_ui_control_t *out,unsigned
     }
     home_ui_tile_t tiles[6];unsigned shown=home_ui_tiles(u,tiles);
     for(unsigned i=0;i<shown;++i){
-        unsigned slot=tiles[i].slot;int y=home_ui_row_y(i);
+        unsigned slot=tiles[i].slot;int x=home_ui_tile_x(i),y=home_ui_tile_y(i)+UI_TILE_BUTTON_Y;
         if(tiles[i].kind==HOME_TILE_DEVICE){
             const home_live_device_t *d=&l->devices[slot];bool ready=can&&d->available;
             /* Opening detail remains useful offline. It never submits a command. */
@@ -354,12 +354,12 @@ static unsigned live_controls(const home_ui_t *u,home_ui_control_t *out,unsigned
                 bool failed=l->command_failed&&l->failed_device==slot;
                 bool enabled=failed?(l->online&&l->time_ready&&!l->pending):ready;
                 const char *label=l->pending?"Ожидание":failed&&enabled?"Проверить":!d->available?"Недоступно":!can?"Нет связи":d->on?"Выключить":"Включить";
-                add(out,cap,&n,enabled?(failed?LIVE_REFRESH:LIVE_TOGGLE+slot):0,UI_ACTION_X,y,144,UI_TARGET,label,!failed&&d->on);
-                add(out,cap,&n,LIVE_OPEN+slot,UI_MORE_X,y,80,UI_TARGET,"Ещё",false);
-            }else add(out,cap,&n,LIVE_OPEN+slot,UI_ACTION_X,y,240,UI_TARGET,d->has_range?"Настроить":"Подробнее",false);
+                add(out,cap,&n,enabled?(failed?LIVE_REFRESH:LIVE_TOGGLE+slot):0,x+UI_TILE_PAD,y,144,UI_TARGET,label,!failed&&d->on);
+                add(out,cap,&n,LIVE_OPEN+slot,x+UI_TILE_MORE_X,y,56,UI_TARGET,"Ещё",false);
+            }else add(out,cap,&n,LIVE_OPEN+slot,x+UI_TILE_PAD,y,216,UI_TARGET,d->has_range?"Настроить":"Подробнее",false);
         }else if(tiles[i].kind==HOME_TILE_ROOM){
-            add(out,cap,&n,LIVE_ROOM+slot,552,y,224,UI_TARGET,"Открыть",false);
-        }else add(out,cap,&n,can?LIVE_SCENE+slot:0,552,y,224,UI_TARGET,l->pending?"Ожидание":!can?"Нет связи":"Запустить",false);
+            add(out,cap,&n,LIVE_ROOM+slot,x+UI_TILE_PAD,y,216,UI_TARGET,"Открыть",false);
+        }else add(out,cap,&n,can?LIVE_SCENE+slot:0,x+UI_TILE_PAD,y,216,UI_TARGET,l->pending?"Ожидание":!can?"Нет связи":"Запустить",false);
     }
     return n;
 }

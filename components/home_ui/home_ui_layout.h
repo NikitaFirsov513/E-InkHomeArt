@@ -1,6 +1,6 @@
 #pragma once
 
-/* Shared by rendering and hit testing. Rows never grow with external text. */
+/* Shared by rendering and hit testing. External text cannot resize a tile. */
 enum {
     UI_LEFT=24, UI_RIGHT=776, UI_HEADER_LINE=72, UI_STATUS_Y=80,
     UI_ROW_TOP=112, UI_ROW_PITCH=72, UI_TARGET=56, UI_FOOTER=400,
@@ -9,6 +9,11 @@ enum {
     UI_PRESET_X=88, UI_PRESET_Y=304, UI_PRESET_PITCH=160
 };
 static inline int home_ui_row_y(unsigned row) { return UI_ROW_TOP+UI_ROW_PITCH*(int)row; }
+enum { UI_TILE_WIDTH=240, UI_TILE_HEIGHT=128, UI_TILE_PITCH_X=256,
+       UI_TILE_PITCH_Y=144, UI_TILE_PAD=12, UI_TILE_BUTTON_Y=64,
+       UI_TILE_MORE_X=172 };
+static inline int home_ui_tile_x(unsigned tile) { return UI_LEFT+UI_TILE_PITCH_X*(int)(tile%3); }
+static inline int home_ui_tile_y(unsigned tile) { return UI_ROW_TOP+UI_TILE_PITCH_Y*(int)(tile/3); }
 
 enum { NAV_HOME=1,NAV_ROOMS,NAV_SCENES,ART,SETTINGS,BACK,
        OPEN_DEVICE=10,TOGGLE_DEVICE=20,SCENE=30,ROOM=40,MINUS=50,PLUS,APPLY,
