@@ -1,0 +1,465 @@
+{
+  "status": "ok",
+  "rooms": [
+    {
+      "id": "r",
+      "name": "Гостиная"
+    }
+  ],
+  "scenarios": [],
+  "devices": [
+    {
+      "id": "0",
+      "name": "Устройство",
+      "type": "devices.types.light",
+      "room": "r",
+      "state": "online",
+      "capabilities": [
+        {
+          "type": "devices.capabilities.range",
+          "parameters": {
+            "range": {
+              "min": 0,
+              "max": 100,
+              "precision": 1
+            },
+            "unit": "unit.percent",
+            "instance": "open"
+          },
+          "state": {
+            "instance": "open",
+            "value": 40
+          }
+        },
+        {
+          "type": "devices.capabilities.range",
+          "parameters": {
+            "range": {
+              "min": 0,
+              "max": 100,
+              "precision": 1
+            },
+            "unit": "unit.percent",
+            "instance": "volume"
+          },
+          "state": {
+            "instance": "volume",
+            "value": 40
+          }
+        },
+        {
+          "type": "devices.capabilities.range",
+          "parameters": {
+            "range": {
+              "min": 0,
+              "max": 100,
+              "precision": 1
+            },
+            "unit": "unit.percent",
+            "instance": "humidity"
+          },
+          "state": {
+            "instance": "humidity",
+            "value": 40
+          }
+        },
+        {
+          "type": "devices.capabilities.range",
+          "parameters": {
+            "range": {
+              "min": 0,
+              "max": 100,
+              "precision": 1
+            },
+            "unit": "unit.temperature.celsius",
+            "instance": "temperature"
+          },
+          "state": {
+            "instance": "temperature",
+            "value": 40
+          }
+        },
+        {
+          "type": "devices.capabilities.range",
+          "parameters": {
+            "range": {
+              "min": 0,
+              "max": 100,
+              "precision": 1
+            },
+            "unit": "unit.percent",
+            "instance": "brightness"
+          },
+          "state": {
+            "instance": "brightness",
+            "value": 40
+          }
+        },
+        {
+          "type": "devices.capabilities.mode",
+          "parameters": {
+            "modes": [
+              {
+                "value": "auto"
+              },
+              {
+                "value": "low"
+              },
+              {
+                "value": "high"
+              }
+            ],
+            "instance": "program"
+          },
+          "state": {
+            "instance": "program",
+            "value": "auto"
+          }
+        },
+        {
+          "type": "devices.capabilities.mode",
+          "parameters": {
+            "modes": [
+              {
+                "value": "auto"
+              },
+              {
+                "value": "low"
+              },
+              {
+                "value": "high"
+              }
+            ],
+            "instance": "coffee_mode"
+          },
+          "state": {
+            "instance": "coffee_mode",
+            "value": "auto"
+          }
+        },
+        {
+          "type": "devices.capabilities.mode",
+          "parameters": {
+            "modes": [
+              {
+                "value": "auto"
+              },
+              {
+                "value": "low"
+              },
+              {
+                "value": "high"
+              }
+            ],
+            "instance": "dishwashing"
+          },
+          "state": {
+            "instance": "dishwashing",
+            "value": "auto"
+          }
+        },
+        {
+          "type": "devices.capabilities.mode",
+          "parameters": {
+            "modes": [
+              {
+                "value": "auto"
+              },
+              {
+                "value": "low"
+              },
+              {
+                "value": "high"
+              }
+            ],
+            "instance": "fan_speed"
+          },
+          "state": {
+            "instance": "fan_speed",
+            "value": "auto"
+          }
+        },
+        {
+          "type": "devices.capabilities.mode",
+          "parameters": {
+            "modes": [
+              {
+                "value": "auto"
+              },
+              {
+                "value": "low"
+              },
+              {
+                "value": "high"
+              }
+            ],
+            "instance": "work_speed"
+          },
+          "state": {
+            "instance": "work_speed",
+            "value": "auto"
+          }
+        },
+        {
+          "type": "devices.capabilities.mode",
+          "parameters": {
+            "modes": [
+              {
+                "value": "auto"
+              },
+              {
+                "value": "low"
+              },
+              {
+                "value": "high"
+              }
+            ],
+            "instance": "cleanup_mode"
+          },
+          "state": {
+            "instance": "cleanup_mode",
+            "value": "auto"
+          }
+        },
+        {
+          "type": "devices.capabilities.mode",
+          "parameters": {
+            "modes": [
+              {
+                "value": "auto"
+              },
+              {
+                "value": "low"
+              },
+              {
+                "value": "high"
+              }
+            ],
+            "instance": "thermostat"
+          },
+          "state": {
+            "instance": "thermostat",
+            "value": "auto"
+          }
+        },
+        {
+          "type": "devices.capabilities.mode",
+          "parameters": {
+            "modes": [
+              {
+                "value": "auto"
+              },
+              {
+                "value": "low"
+              },
+              {
+                "value": "high"
+              }
+            ],
+            "instance": "tea_mode"
+          },
+          "state": {
+            "instance": "tea_mode",
+            "value": "auto"
+          }
+        },
+        {
+          "type": "devices.capabilities.toggle",
+          "parameters": {
+            "instance": "pause"
+          },
+          "state": {
+            "instance": "pause",
+            "value": false
+          }
+        },
+        {
+          "type": "devices.capabilities.on_off",
+          "parameters": {},
+          "state": {
+            "instance": "on",
+            "value": false
+          }
+        }
+      ],
+      "properties": [
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "battery_level",
+            "unit": "unit.percent"
+          },
+          "state": {
+            "instance": "battery_level",
+            "value": 42
+          }
+        },
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "humidity",
+            "unit": "unit.percent"
+          },
+          "state": {
+            "instance": "humidity",
+            "value": 42
+          }
+        },
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "temperature",
+            "unit": "unit.percent"
+          },
+          "state": {
+            "instance": "temperature",
+            "value": 42
+          }
+        },
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "illumination",
+            "unit": "unit.percent"
+          },
+          "state": {
+            "instance": "illumination",
+            "value": 42
+          }
+        },
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "meter",
+            "unit": "unit.percent"
+          },
+          "state": {
+            "instance": "meter",
+            "value": 42
+          }
+        },
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "water_meter",
+            "unit": "unit.percent"
+          },
+          "state": {
+            "instance": "water_meter",
+            "value": 42
+          }
+        },
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "electricity_meter",
+            "unit": "unit.percent"
+          },
+          "state": {
+            "instance": "electricity_meter",
+            "value": 42
+          }
+        },
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "gas_meter",
+            "unit": "unit.percent"
+          },
+          "state": {
+            "instance": "gas_meter",
+            "value": 42
+          }
+        },
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "heat_meter",
+            "unit": "unit.percent"
+          },
+          "state": {
+            "instance": "heat_meter",
+            "value": 42
+          }
+        },
+        {
+          "type": "devices.properties.event",
+          "parameters": {
+            "instance": "gas",
+            "unit": ""
+          },
+          "state": {
+            "instance": "gas",
+            "value": "not_detected"
+          }
+        },
+        {
+          "type": "devices.properties.event",
+          "parameters": {
+            "instance": "button",
+            "unit": ""
+          },
+          "state": {
+            "instance": "button",
+            "value": "not_detected"
+          }
+        },
+        {
+          "type": "devices.properties.event",
+          "parameters": {
+            "instance": "motion",
+            "unit": ""
+          },
+          "state": {
+            "instance": "motion",
+            "value": "not_detected"
+          }
+        },
+        {
+          "type": "devices.properties.event",
+          "parameters": {
+            "instance": "open",
+            "unit": ""
+          },
+          "state": {
+            "instance": "open",
+            "value": "not_detected"
+          }
+        },
+        {
+          "type": "devices.properties.event",
+          "parameters": {
+            "instance": "smoke",
+            "unit": ""
+          },
+          "state": {
+            "instance": "smoke",
+            "value": "not_detected"
+          }
+        },
+        {
+          "type": "devices.properties.event",
+          "parameters": {
+            "instance": "vibration",
+            "unit": ""
+          },
+          "state": {
+            "instance": "vibration",
+            "value": "not_detected"
+          }
+        },
+        {
+          "type": "devices.properties.event",
+          "parameters": {
+            "instance": "water_leak",
+            "unit": ""
+          },
+          "state": {
+            "instance": "water_leak",
+            "value": "not_detected"
+          }
+        }
+      ]
+    }
+  ]
+}

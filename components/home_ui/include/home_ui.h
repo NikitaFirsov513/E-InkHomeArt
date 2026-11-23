@@ -21,6 +21,8 @@ typedef struct {
     unsigned control,control_offset,option_offset,draft_option,number_channel;
     char number_text[24];
     bool number_error,number_replace;
+    bool control_direct;
+    int16_t press_x,press_y;
     home_command_t command;
     bool active, visible, contact, require_release, pressed;
     bool dark_theme;

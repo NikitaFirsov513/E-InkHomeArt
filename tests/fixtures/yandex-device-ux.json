@@ -1,0 +1,442 @@
+{
+  "status": "ok",
+  "rooms": [
+    {
+      "id": "r",
+      "name": "Гостиная"
+    }
+  ],
+  "scenarios": [],
+  "devices": [
+    {
+      "id": "0",
+      "name": "Свет в гостиной",
+      "type": "devices.types.light",
+      "room": "r",
+      "state": "online",
+      "capabilities": [
+        {
+          "type": "devices.capabilities.on_off",
+          "parameters": {},
+          "state": {
+            "instance": "on",
+            "value": true
+          }
+        },
+        {
+          "type": "devices.capabilities.range",
+          "parameters": {
+            "range": {
+              "min": 0,
+              "max": 100,
+              "precision": 1
+            },
+            "unit": "unit.percent",
+            "instance": "brightness"
+          },
+          "state": {
+            "instance": "brightness",
+            "value": 65
+          }
+        },
+        {
+          "type": "devices.capabilities.color_setting",
+          "parameters": {
+            "color_model": "hsv",
+            "temperature_k": {
+              "min": 2700,
+              "max": 6500
+            }
+          },
+          "state": {
+            "instance": "temperature_k",
+            "value": 3200
+          }
+        }
+      ],
+      "properties": []
+    },
+    {
+      "id": "1",
+      "name": "Робот-пылесос",
+      "type": "devices.types.vacuum_cleaner",
+      "room": "r",
+      "state": "online",
+      "capabilities": [
+        {
+          "type": "devices.capabilities.mode",
+          "parameters": {
+            "modes": [
+              {
+                "value": "slow"
+              },
+              {
+                "value": "medium"
+              },
+              {
+                "value": "fast"
+              },
+              {
+                "value": "turbo"
+              },
+              {
+                "value": "auto"
+              }
+            ],
+            "instance": "work_speed"
+          },
+          "state": {
+            "instance": "work_speed",
+            "value": "medium"
+          }
+        },
+        {
+          "type": "devices.capabilities.mode",
+          "parameters": {
+            "modes": [
+              {
+                "value": "auto"
+              },
+              {
+                "value": "eco"
+              },
+              {
+                "value": "express"
+              },
+              {
+                "value": "normal"
+              },
+              {
+                "value": "quiet"
+              },
+              {
+                "value": "wet_cleaning"
+              },
+              {
+                "value": "dry_cleaning"
+              },
+              {
+                "value": "mixed_cleaning"
+              }
+            ],
+            "instance": "cleanup_mode"
+          },
+          "state": {
+            "instance": "cleanup_mode",
+            "value": "mixed_cleaning"
+          }
+        },
+        {
+          "type": "devices.capabilities.toggle",
+          "parameters": {
+            "instance": "pause"
+          },
+          "state": {
+            "instance": "pause",
+            "value": false
+          }
+        },
+        {
+          "type": "devices.capabilities.on_off",
+          "parameters": {},
+          "state": {
+            "instance": "on",
+            "value": false
+          }
+        }
+      ],
+      "properties": [
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "battery_level",
+            "unit": "unit.percent"
+          },
+          "state": {
+            "instance": "battery_level",
+            "value": 78
+          }
+        },
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "water_level",
+            "unit": "unit.percent"
+          },
+          "state": {
+            "instance": "water_level",
+            "value": 64
+          }
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "name": "Кондиционер",
+      "type": "devices.types.thermostat.ac",
+      "room": "r",
+      "state": "online",
+      "capabilities": [
+        {
+          "type": "devices.capabilities.on_off",
+          "parameters": {},
+          "state": {
+            "instance": "on",
+            "value": true
+          }
+        },
+        {
+          "type": "devices.capabilities.mode",
+          "parameters": {
+            "modes": [
+              {
+                "value": "auto"
+              },
+              {
+                "value": "low"
+              },
+              {
+                "value": "medium"
+              },
+              {
+                "value": "high"
+              }
+            ],
+            "instance": "fan_speed"
+          },
+          "state": {
+            "instance": "fan_speed",
+            "value": "auto"
+          }
+        },
+        {
+          "type": "devices.capabilities.mode",
+          "parameters": {
+            "modes": [
+              {
+                "value": "auto"
+              },
+              {
+                "value": "cool"
+              },
+              {
+                "value": "heat"
+              },
+              {
+                "value": "dry"
+              },
+              {
+                "value": "fan_only"
+              }
+            ],
+            "instance": "thermostat"
+          },
+          "state": {
+            "instance": "thermostat",
+            "value": "cool"
+          }
+        },
+        {
+          "type": "devices.capabilities.range",
+          "parameters": {
+            "range": {
+              "min": 16,
+              "max": 30,
+              "precision": 1
+            },
+            "unit": "unit.temperature.celsius",
+            "instance": "temperature"
+          },
+          "state": {
+            "instance": "temperature",
+            "value": 22
+          }
+        }
+      ],
+      "properties": [
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "temperature",
+            "unit": "unit.temperature.celsius"
+          },
+          "state": {
+            "instance": "temperature",
+            "value": 24
+          }
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "name": "Шторы",
+      "type": "devices.types.openable.curtain",
+      "room": "r",
+      "state": "online",
+      "capabilities": [
+        {
+          "type": "devices.capabilities.mode",
+          "parameters": {
+            "modes": [
+              {
+                "value": "slow"
+              },
+              {
+                "value": "medium"
+              },
+              {
+                "value": "fast"
+              }
+            ],
+            "instance": "work_speed"
+          },
+          "state": {
+            "instance": "work_speed",
+            "value": "medium"
+          }
+        },
+        {
+          "type": "devices.capabilities.range",
+          "parameters": {
+            "range": {
+              "min": 0,
+              "max": 100,
+              "precision": 1
+            },
+            "unit": "unit.percent",
+            "instance": "open"
+          },
+          "state": {
+            "instance": "open",
+            "value": 50
+          }
+        }
+      ],
+      "properties": []
+    },
+    {
+      "id": "4",
+      "name": "Телевизор",
+      "type": "devices.types.media_device.tv",
+      "room": "r",
+      "state": "online",
+      "capabilities": [
+        {
+          "type": "devices.capabilities.on_off",
+          "parameters": {},
+          "state": {
+            "instance": "on",
+            "value": true
+          }
+        },
+        {
+          "type": "devices.capabilities.range",
+          "parameters": {
+            "range": {
+              "min": 1,
+              "max": 999,
+              "precision": 1
+            },
+            "unit": "",
+            "instance": "channel"
+          },
+          "state": {
+            "instance": "channel",
+            "value": 5
+          }
+        },
+        {
+          "type": "devices.capabilities.mode",
+          "parameters": {
+            "modes": [
+              {
+                "value": "one"
+              },
+              {
+                "value": "two"
+              },
+              {
+                "value": "three"
+              }
+            ],
+            "instance": "input_source"
+          },
+          "state": {
+            "instance": "input_source",
+            "value": "one"
+          }
+        },
+        {
+          "type": "devices.capabilities.range",
+          "parameters": {
+            "range": {
+              "min": 0,
+              "max": 100,
+              "precision": 1
+            },
+            "unit": "unit.percent",
+            "instance": "volume"
+          },
+          "state": {
+            "instance": "volume",
+            "value": 30
+          }
+        },
+        {
+          "type": "devices.capabilities.toggle",
+          "parameters": {
+            "instance": "mute"
+          },
+          "state": {
+            "instance": "mute",
+            "value": false
+          }
+        }
+      ],
+      "properties": []
+    },
+    {
+      "id": "5",
+      "name": "Датчик климата",
+      "type": "devices.types.sensor.climate",
+      "room": "r",
+      "state": "online",
+      "capabilities": [],
+      "properties": [
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "humidity",
+            "unit": "unit.percent"
+          },
+          "state": {
+            "instance": "humidity",
+            "value": 42
+          }
+        },
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "temperature",
+            "unit": "unit.temperature.celsius"
+          },
+          "state": {
+            "instance": "temperature",
+            "value": 23.5
+          }
+        },
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "battery_level",
+            "unit": "unit.percent"
+          },
+          "state": {
+            "instance": "battery_level",
+            "value": 91
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -19,9 +19,14 @@ cmd=[str(cxx),'-std=c++17',*flags,*sources,*objects]
 exe=out/('capabilities.exe' if os.name=='nt' else 'capabilities')
 subprocess.run([*cmd,'-o',str(exe)],check=True);subprocess.run([str(exe)],cwd=root,check=True)
 library=out/('capabilities.dll' if os.name=='nt' else 'capabilities.so')
-subprocess.run([*cmd,'-shared',*(['-Wl,/EXPORT:capability_preview'] if os.name=='nt' else ['-fPIC']),'-o',str(library)],check=True)
+subprocess.run([*cmd,'-shared',*(['-Wl,/EXPORT:capability_preview','-Wl,/EXPORT:presentation_preview'] if os.name=='nt' else ['-fPIC']),'-o',str(library)],check=True)
 lib=ct.CDLL(str(library));render=lib.capability_preview
 render.argtypes=[ct.c_uint,ct.POINTER(ct.c_uint8),ct.c_size_t];render.restype=ct.c_bool
 for i,name in enumerate(['overview','overview-2','temperature','mode','toggle','hsv','rgb','relative','keypad','reading','offline','pending','error','dark']):
     frame=(ct.c_uint8*48000)();assert render(i,frame,48000),name;png(out/(name+'.png'),bytes(frame))
 print('Capability previews:',out)
+
+render=lib.presentation_preview
+render.argtypes=[ct.c_uint,ct.POINTER(ct.c_uint8),ct.c_size_t];render.restype=ct.c_bool
+for i,name in enumerate(['home','light','vacuum','vacuum-mode','climate','media','curtains','sensor','vacuum-pause','all-settings']):
+    frame=(ct.c_uint8*48000)();assert render(i,frame,48000),name;png(out/('profile-'+name+'.png'),bytes(frame))

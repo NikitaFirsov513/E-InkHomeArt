@@ -24,6 +24,8 @@ static std::string fixture_text()
     std::ifstream f("tests/fixtures/yandex-capabilities.json");assert(f);
     return {std::istreambuf_iterator<char>(f),std::istreambuf_iterator<char>()};
 }
+static std::string file_text(const char *path)
+{std::ifstream f(path);assert(f);return {std::istreambuf_iterator<char>(f),std::istreambuf_iterator<char>()};}
 static void fixture(HomeCatalog &c,home_ui_t &u)
 {
     auto *json=cJSON_Parse(fixture_text().c_str());assert(json&&c.load(json));cJSON_Delete(json);
@@ -52,10 +54,19 @@ static void tap(home_ui_t &u,unsigned action)
     }
     fprintf(stderr,"Missing action %u on page %u\n",action,u.page);assert(false);
 }
+static bool point(home_ui_t &u,int x,int y)
+{
+    static int64_t now=2000000;now+=10000;home_ui_presented(&u,true,u.revision,now);
+    home_ui_touch(&u,1,x,y,0,now);return home_ui_touch(&u,0,-1,-1,0,now+1000);
+}
 static void open(home_ui_t &u,unsigned control)
 {
     u.page=HOME_PAGE_DEVICE;u.control_offset=(control-u.live->devices[u.device].control_start)/6*6;
-    tap(u,CAP_OPEN+control);assert(u.page==HOME_PAGE_CONTROL&&u.control==control);
+    static int64_t now=500000;now+=10000;home_ui_presented(&u,true,u.revision,now);
+    unsigned tile=control-u.live->devices[u.device].control_start-u.control_offset;
+    assert(home_ui_target(&u,home_ui_tile_x(tile)+20,home_ui_tile_y(tile)+20)==CAP_OPEN+control);
+    home_ui_touch(&u,1,home_ui_tile_x(tile)+20,home_ui_tile_y(tile)+20,0,now);
+    assert(home_ui_touch(&u,0,-1,-1,0,now+1000));assert(u.page==HOME_PAGE_CONTROL&&u.control==control);
 }
 static void input(home_ui_t &u,const char *number)
 {
@@ -113,8 +124,92 @@ extern "C" bool capability_preview(unsigned state,uint8_t *frame,size_t length)
     }
     return home_ui_render(frame,length,&u);
 }
+extern "C" bool presentation_preview(unsigned state,uint8_t *frame,size_t length)
+{
+    auto c=std::make_unique<HomeCatalog>();auto *root=cJSON_Parse(file_text("tests/fixtures/yandex-device-ux.json").c_str());
+    assert(root&&c->load(root));cJSON_Delete(root);auto &l=c->data;l.online=l.time_ready=l.authorized=true;
+    home_ui_t u;home_ui_init(&u);home_ui_set_live(&u,&l);home_ui_open_menu(&u,0);
+    unsigned slot=state==2||state==3||state==8?1:state==4?2:state==5?4:state==6?3:state==7?5:0;
+    if(state){assert(point(u,home_ui_tile_x(slot)+20,home_ui_tile_y(slot)+20));}
+    if(state==3)open(u,index(l,"Режим уборки",1));
+    if(state==8)open(u,index(l,"Пауза уборки",1));
+    if(state==9)tap(u,CAP_ALL);
+    return home_ui_render(frame,length,&u);
+}
+static void presentation_tests()
+{
+    auto c=std::make_unique<HomeCatalog>();
+    auto *cases=cJSON_Parse(file_text("tests/fixtures/yandex-device-profiles.json").c_str());assert(cJSON_GetArraySize(cases)==54);
+    unsigned checked=0,frames=0;const cJSON *entry=nullptr;
+    cJSON_ArrayForEach(entry,cases){
+        auto *root=cJSON_Parse(file_text("tests/fixtures/yandex-profile-capabilities.json").c_str());assert(root);
+        auto *dev=cJSON_GetArrayItem(cJSON_GetObjectItemCaseSensitive(root,"devices"),0);
+        const char *type=cJSON_GetObjectItemCaseSensitive(entry,"type")->valuestring;
+        cJSON_ReplaceItemInObject(dev,"type",cJSON_CreateString(type));assert(c->load(root));cJSON_Delete(root);
+        auto &l=c->data;l.online=l.time_ready=l.authorized=true;
+        const auto &d=l.devices[0];assert(d.control_count==31&&d.primary_control<l.control_count);
+        const auto &primary=l.controls[d.primary_control];
+        const char *role=cJSON_GetObjectItemCaseSensitive(entry,"primary")->valuestring;
+        if(strcmp(primary.instance,role)){fprintf(stderr,"Wrong primary for %s: %s instead of %s\n",type,primary.instance,role);assert(false);}
+        bool reading=!strcmp(cJSON_GetObjectItemCaseSensitive(entry,"kind")->valuestring,"reading");
+        assert((primary.kind==HOME_CONTROL_READING)==reading);
+        bool dashboard=cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(entry,"dashboard"));assert(d.dashboard==dashboard);
+        home_ui_t u;home_ui_init(&u);home_ui_set_live(&u,&l);home_ui_open_menu(&u,0);
+        assert(home_ui_target(&u,224,204)==LIVE_OPEN); // Settings icon.
+        assert(point(u,44,132)&&u.command.kind==HOME_CMD_NONE); // Title/card.
+        assert(u.page==(dashboard?HOME_PAGE_DEVICE:HOME_PAGE_CONTROL));
+        if(!dashboard){
+            assert(u.control==d.primary_control&&u.control_direct);render_checked(u);++frames;
+            tap(u,BACK);assert(u.page==HOME_PAGE_HOME&&u.command.kind==HOME_CMD_NONE);
+            assert(point(u,224,204)&&u.page==HOME_PAGE_CONTROL); // Icon and body share entry policy.
+            tap(u,CAP_ALL);assert(u.page==HOME_PAGE_DEVICE);
+        }
+        for(u.control_offset=0;u.control_offset<d.control_count;u.control_offset+=6){render_checked(u);++frames;}
+        u.page=HOME_PAGE_HOME;bool quick=home_ui_target(&u,100,204)==LIVE_TOGGLE;l.pending=true;
+        if(quick){
+            assert(home_ui_target(&u,100,204)==0); // Disabled foreground button never falls through to its card.
+            assert(!point(u,100,204)&&u.command.kind==HOME_CMD_NONE);
+        }else assert(home_ui_target(&u,100,204)==LIVE_OPEN); // Inspection remains available.
+        assert(home_ui_target(&u,44,132)==LIVE_OPEN);
+        // A drag within the same card cancels a click too.
+        home_ui_presented(&u,true,u.revision,10000000);home_ui_touch(&u,1,44,132,0,10000001);
+        home_ui_touch(&u,1,100,132,0,10000002);assert(!home_ui_touch(&u,0,-1,-1,0,10000003));
+        ++checked;
+    }
+    cJSON_Delete(cases);
+    // Realistic vacuum: pause means pause, not a second power switch.
+    auto *root=cJSON_Parse(file_text("tests/fixtures/yandex-device-ux.json").c_str());assert(root&&c->load(root));cJSON_Delete(root);
+    auto &l=c->data;l.online=l.time_ready=l.authorized=true;
+    home_ui_t u;home_ui_init(&u);home_ui_set_live(&u,&l);home_ui_open_menu(&u,0);assert(point(u,300,132)&&u.page==HOME_PAGE_DEVICE);
+    unsigned pause=index(l,"Пауза уборки",1),clean=index(l,"Уборка",1),mode=index(l,"Режим уборки",1);
+    assert(!strcmp(l.controls[pause].on_label,"Пауза")&&!strcmp(l.controls[pause].off_label,"Продолжить"));
+    assert(!strcmp(l.controls[clean].on_label,"Начать уборку")&&!strcmp(l.controls[clean].off_label,"Остановить"));
+    tap(u,CAP_QUICK+pause);check_command(*c,u,"pause");assert(u.command.value==1&&!l.controls[pause].boolean);u.command.kind=HOME_CMD_NONE;
+    tap(u,CAP_QUICK+clean);check_command(*c,u,"on");assert(u.command.value==1&&!l.controls[clean].boolean);u.command.kind=HOME_CMD_NONE;
+    assert(!strcmp(l.options[l.controls[mode].option_start+5].name,"Влажная уборка"));
+    assert(!strcmp(l.options[l.controls[mode].option_start+6].name,"Сухая уборка"));
+    assert(!strcmp(l.options[l.controls[mode].option_start+7].name,"Смешанная уборка"));
+    u.page=HOME_PAGE_HOME;assert(point(u,44,132)&&u.page==HOME_PAGE_CONTROL&&!strcmp(home_ui_selected_control(&u)->instance,"brightness"));
+    tap(u,CAP_ALL);assert(u.page==HOME_PAGE_DEVICE);open(u,index(l,"Температура света"));tap(u,BACK);assert(u.page==HOME_PAGE_DEVICE);
+    u.page=HOME_PAGE_HOME;assert(point(u,44,276)&&!strcmp(home_ui_selected_control(&u)->instance,"open"));
+    assert(home_ui_control_preset(home_ui_selected_control(&u),0)==0&&home_ui_control_preset(home_ui_selected_control(&u),3)==100);
+    // Unavailable primary function falls back to an actually advertised one.
+    root=cJSON_Parse(file_text("tests/fixtures/yandex-device-ux.json").c_str());
+    auto *dev=cJSON_GetArrayItem(cJSON_GetObjectItemCaseSensitive(root,"devices"),0);
+    auto *caps=cJSON_GetObjectItemCaseSensitive(dev,"capabilities");cJSON_DeleteItemFromArray(caps,1);
+    assert(c->load(root));cJSON_Delete(root);const auto &lamp=c->data.devices[0];
+    assert(!strcmp(c->data.controls[lamp.primary_control].instance,"temperature_k"));
+    root=cJSON_Parse(file_text("tests/fixtures/yandex-device-ux.json").c_str());
+    dev=cJSON_GetArrayItem(cJSON_GetObjectItemCaseSensitive(root,"devices"),1);
+    cJSON_ReplaceItemInObject(dev,"type",cJSON_CreateString("devices.types.washing_machine"));
+    caps=cJSON_GetObjectItemCaseSensitive(dev,"capabilities");cJSON_DeleteItemFromArray(caps,0);cJSON_DeleteItemFromArray(caps,0);
+    assert(c->load(root));cJSON_Delete(root);const auto &washer=c->data.devices[1];
+    assert(!strcmp(c->data.controls[washer.primary_control].instance,"on")); // No program: power before pause.
+    printf("PASS: %u documented device types; priority entry/fallback; card/gear navigation; disabled-action precedence; in-card drag rejection; vacuum commands; %u profile frames.\n",checked,frames);
+}
 int main()
 {
+    presentation_tests();
     auto c=std::make_unique<HomeCatalog>();home_ui_t u;fixture(*c,u);
     assert(c->data.devices[0].control_count==13&&c->data.control_count==20&&c->data.option_count==16);
     auto &l=c->data;

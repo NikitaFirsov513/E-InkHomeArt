@@ -166,8 +166,8 @@ static void geometry_tests(void)
 static void live_tests(void)
 {
     home_ui_t u;home_ui_init(&u);static home_live_data_t l;live_fixture(&l);home_ui_set_live(&u,&l);home_ui_open_menu(&u,0);shown(&u,0);
-    /* Tile labels/background are not secondary hidden buttons. */
-    assert(home_ui_target(&u,100,130)==0&&home_ui_target(&u,410,130)==0);
+    /* Tile names/body open settings; an explicit action still takes precedence. */
+    assert(home_ui_target(&u,100,130)==LIVE_OPEN&&home_ui_target(&u,410,130)==LIVE_OPEN+1);
     assert(action_tap(&u,LIVE_TOGGLE,1000));assert(u.command.kind==HOME_CMD_TOGGLE&&u.command.epoch==7&&u.command.slot==0&&u.command.value==1);
     assert(!l.devices[0].on);u.command.kind=HOME_CMD_NONE;shown(&u,2000);
     /* The sixth tile has its own target; no truncation of the control array. */

@@ -113,8 +113,10 @@ const home_live_control_t *home_ui_selected_control(const home_ui_t *u)
 double home_ui_control_preset(const home_live_control_t *c,unsigned preset)
 {
     if(!c||preset>3||!c->has_minimum||!c->has_maximum||c->step<=0)return 0;
-    double target=c->minimum+(c->maximum-c->minimum)*(preset+1)*0.25;
-    if(!strcmp(c->unit,"%"))target=c->maximum*(preset+1)*0.25;
+    double ratio=(preset+1)*0.25;
+    if(!strcmp(c->instance,"open")){static const double opening[]={0,0.25,0.5,1};ratio=opening[preset];}
+    double target=c->minimum+(c->maximum-c->minimum)*ratio;
+    if(!strcmp(c->unit,"%"))target=c->maximum*ratio;
     if(target<c->minimum)target=c->minimum;
     double steps=floor((target-c->minimum)/c->step+0.5),maximum=floor((c->maximum-c->minimum)/c->step+0.000001);
     return c->minimum+(steps>maximum?maximum:steps)*c->step;
@@ -122,7 +124,7 @@ double home_ui_control_preset(const home_live_control_t *c,unsigned preset)
 static void select_control(home_ui_t *u,unsigned index)
 {
     u->control=index;const home_live_control_t *c=home_ui_selected_control(u);if(!c)return;
-    u->page=HOME_PAGE_CONTROL;u->option_offset=0;u->draft_option=UINT32_MAX;
+    u->page=HOME_PAGE_CONTROL;u->control_direct=false;u->option_offset=0;u->draft_option=UINT32_MAX;
     u->live_draft=c->kind==HOME_CONTROL_TOGGLE?(c->known?c->boolean:-1):c->relative_only?0:c->known?c->value:c->has_minimum?c->minimum:0;
     if(c->kind==HOME_CONTROL_MODE&&c->known&&c->selected_option<c->option_count){u->draft_option=c->selected_option;u->option_offset=u->draft_option/6*6;}
     if(c->kind==HOME_CONTROL_RGB){unsigned rgb=(unsigned)c->value;u->color_draft[0]=(rgb>>16)&255;u->color_draft[1]=(rgb>>8)&255;u->color_draft[2]=rgb&255;}
@@ -183,12 +185,26 @@ static bool capability_action(home_ui_t *u,unsigned a)
         else if(a>=NUMBER_KEY&&a<NUMBER_KEY+16)number_key(u,a-NUMBER_KEY);else return false;
         changed(u);return true;
     }
-    if(u->page==HOME_PAGE_CONTROL&&a==BACK){u->page=HOME_PAGE_DEVICE;changed(u);return true;}
+    if(u->page==HOME_PAGE_CONTROL&&a==BACK){
+        u->page=u->control_direct?(home_ui_page_t)u->return_page:HOME_PAGE_DEVICE;
+        if(u->control_direct)u->offset=u->return_offset;
+        changed(u);return true;
+    }
+    if(u->page==HOME_PAGE_CONTROL&&a==CAP_ALL){
+        u->page=HOME_PAGE_DEVICE;u->control_offset=0;u->control_direct=false;changed(u);return true;
+    }
     if(u->page==HOME_PAGE_DEVICE&&home_ui_capabilities(u)){
         const home_live_device_t *d=&l->devices[u->device];
         if(a==CAP_PREV)u->control_offset=u->control_offset>=6?u->control_offset-6:0;
         else if(a==CAP_NEXT){if(u->control_offset+6<d->control_count)u->control_offset+=6;}
         else if(a>=CAP_OPEN&&a<CAP_OPEN+HOME_MAX_CONTROLS){select_control(u,a-CAP_OPEN);}
+        else if(a>=CAP_QUICK&&a<CAP_QUICK+HOME_MAX_CONTROLS){
+            unsigned index=a-CAP_QUICK;
+            if(index>=l->control_count)return true;
+            const home_live_control_t *c=&l->controls[index];
+            if(c->device!=u->device||!c->quick||!c->known||c->kind!=HOME_CONTROL_TOGGLE||!l->online||!l->time_ready||!l->loaded||l->pending||!d->available||home_ui_device_failed(u))return true;
+            u->command=(home_command_t){.kind=HOME_CMD_CONTROL,.epoch=l->epoch,.slot=u->device,.control=index,.value=!c->boolean};
+        }
         else return false;
         changed(u);return true;
     }
@@ -243,7 +259,11 @@ static void live_action(home_ui_t *u,unsigned a)
     else if(a==LIVE_NEXT&&u->offset+HOME_UI_PAGE_SIZE<home_ui_tile_count(u))u->offset+=HOME_UI_PAGE_SIZE;
     else if(a>=LIVE_OPEN&&a<LIVE_OPEN+HOME_MAX_DEVICES){
         unsigned d=a-LIVE_OPEN;if(d>=l->device_count)return;
-        u->return_page=u->page;u->return_offset=u->offset;u->page=HOME_PAGE_DEVICE;u->device=d;u->live_draft=l->devices[d].value;u->control_offset=0;
+        u->return_page=u->page;u->return_offset=u->offset;u->page=HOME_PAGE_DEVICE;u->device=d;u->live_draft=l->devices[d].value;u->control_offset=0;u->control_direct=false;
+        const home_live_device_t *view=&l->devices[d];
+        if(view->control_count&&(!view->dashboard||view->control_count==1)&&view->primary_control<l->control_count&&l->controls[view->primary_control].device==d){
+            select_control(u,view->primary_control);u->control_direct=true;
+        }
     }else if(a>=LIVE_ROOM&&a<LIVE_ROOM+HOME_MAX_ROOMS){u->room=a-LIVE_ROOM;u->page=HOME_PAGE_ROOM;u->offset=0;}
     else if(a==LIVE_ACCOUNT)u->page=HOME_PAGE_ACCOUNT;
     else if(a==LIVE_NETWORK)u->page=HOME_PAGE_NETWORK;
@@ -338,8 +358,8 @@ bool home_ui_touch(home_ui_t *u,unsigned count,int x,int y,unsigned id,int64_t n
     }
     if(count==1){
         unsigned action=home_ui_target(u,x,y);
-        if(!had_contact){u->pressed=action!=0;u->pressed_action=action;u->pointer_id=(uint8_t)id;}
-        else if(u->pointer_id!=id||action!=u->pressed_action)u->pressed=false;
+        if(!had_contact){u->pressed=action!=0;u->pressed_action=action;u->pointer_id=(uint8_t)id;u->press_x=x;u->press_y=y;}
+        else if(u->pointer_id!=id||action!=u->pressed_action||x-u->press_x>16||u->press_x-x>16||y-u->press_y>16||u->press_y-y>16)u->pressed=false;
         return false;
     }
     if(had_contact&&u->pressed){
@@ -365,8 +385,8 @@ static void add(home_ui_control_t *out,unsigned capacity,unsigned *n,unsigned id
     if(*n<capacity)out[(*n)++]=(home_ui_control_t){.action=id,.x=x,.y=y,.w=w,.h=h,.label=label,.filled=filled};
 }
 
-/* A drawn button and its touch target use exactly the same rectangle.
- * Containers, names and state labels are deliberately not clickable. */
+/* Explicit buttons always win over the card fallback in home_ui_target.
+ * A disabled button absorbs the tap; it must never open or activate its card. */
 static void chrome(const home_ui_t *u,home_ui_control_t *out,unsigned cap,unsigned *n)
 {
     bool device=u->page==HOME_PAGE_DEVICE||u->page==HOME_PAGE_CONTROL||u->page==HOME_PAGE_NUMBER;
@@ -380,6 +400,8 @@ static void chrome(const home_ui_t *u,home_ui_control_t *out,unsigned cap,unsign
             (i==2&&u->page==HOME_PAGE_SCENES));
     }
     if(back)add(out,cap,n,BACK,24,8,112,UI_TARGET,"Назад",false);
+    if(u->page==HOME_PAGE_CONTROL&&home_ui_capabilities(u)&&u->live->devices[u->device].control_count>1)
+        add(out,cap,n,CAP_ALL,632,8,144,56,"Все функции",false);
     if(!detail){
         unsigned total=u->live?home_ui_tile_count(u):0;
         add(out,cap,n,u->offset?LIVE_PREV:0,488,8,56,UI_TARGET,"<",false);
@@ -403,10 +425,13 @@ static void demo_tile_controls(const home_ui_t *u,unsigned d,unsigned row,
                               home_ui_control_t *out,unsigned cap,unsigned *n)
 {
     int x=home_ui_tile_x(row),y=home_ui_tile_y(row)+UI_TILE_BUTTON_Y;
-    if(d==2){add(out,cap,n,OPEN_DEVICE+d,x+UI_TILE_PAD,y,216,UI_TARGET,"Настроить",false);return;}
+    if(d==2){
+        add(out,cap,n,OPEN_DEVICE+d,x+UI_TILE_PAD,y,144,UI_TARGET,"Настроить",false);
+        add(out,cap,n,OPEN_DEVICE+d,x+UI_TILE_MORE_X,y,56,UI_TARGET,"Настройки",false);return;
+    }
     const char *label=d<2?(u->light_on[d]?"Выключить":"Включить"):u->curtains==100?"Закрыть":"Открыть";
     add(out,cap,n,TOGGLE_DEVICE+d,x+UI_TILE_PAD,y,144,UI_TARGET,label,d<2&&u->light_on[d]);
-    add(out,cap,n,OPEN_DEVICE+d,x+UI_TILE_MORE_X,y,56,UI_TARGET,"Ещё",false);
+    add(out,cap,n,OPEN_DEVICE+d,x+UI_TILE_MORE_X,y,56,UI_TARGET,"Настройки",false);
 }
 unsigned home_ui_controls(const home_ui_t *u,home_ui_control_t *out,unsigned cap)
 {
@@ -449,8 +474,11 @@ static unsigned capability_controls(const home_ui_t *u,home_ui_control_t *out,un
         unsigned end=u->control_offset+6;if(end>d->control_count)end=d->control_count;
         for(unsigned i=u->control_offset;i<end;++i){
             unsigned index=d->control_start+i;const home_live_control_t *c=&l->controls[index];unsigned tile=i-u->control_offset;
-            add(out,cap,&n,CAP_OPEN+index,home_ui_tile_x(tile)+12,home_ui_tile_y(tile)+64,216,56,
-                c->kind==HOME_CONTROL_READING||c->kind==HOME_CONTROL_UNSUPPORTED?"Подробнее":"Настроить",false);
+            bool toggle=c->kind==HOME_CONTROL_TOGGLE&&c->known&&c->quick;
+            bool ready=l->online&&l->time_ready&&l->loaded&&!l->pending&&d->available&&!home_ui_device_failed(u);
+            const char *label=c->kind==HOME_CONTROL_READING||c->kind==HOME_CONTROL_UNSUPPORTED?"Подробнее":toggle?
+                (l->pending?"Ожидание":!ready?"Нет связи":c->boolean?c->off_label:c->on_label):"Настроить";
+            add(out,cap,&n,toggle?(ready?CAP_QUICK+index:0):CAP_OPEN+index,home_ui_tile_x(tile)+12,home_ui_tile_y(tile)+64,216,56,label,toggle&&c->boolean);
         }
         add(out,cap,&n,u->control_offset?CAP_PREV:0,24,UI_NAV_Y,112,56,"<",false);
         add(out,cap,&n,u->control_offset+6<d->control_count?CAP_NEXT:0,152,UI_NAV_Y,112,56,">",false);
@@ -477,10 +505,10 @@ static unsigned capability_controls(const home_ui_t *u,home_ui_control_t *out,un
         add(out,cap,&n,u->option_offset?CAP_OPTIONS_PREV:0,24,UI_NAV_Y,112,56,"<",false);
         add(out,cap,&n,u->option_offset+6<c->option_count?CAP_OPTIONS_NEXT:0,152,UI_NAV_Y,112,56,">",false);
     }else if(c->kind==HOME_CONTROL_TOGGLE){
-        if(c->momentary)add(out,cap,&n,ready?CAP_PULSE:0,216,240,368,72,"Нажать питание",false);
+        if(c->momentary)add(out,cap,&n,ready?CAP_PULSE:0,216,240,368,72,l->devices[u->device].profile==HOME_PROFILE_VACUUM?"Команда уборки":l->devices[u->device].profile==HOME_PROFILE_PET_FEEDER?"Подать корм":l->devices[u->device].profile==HOME_PROFILE_KETTLE?"Команда нагрева":"Нажать питание",false);
         else{
-            add(out,cap,&n,ready?CAP_ON:0,152,240,224,72,"Включить",u->live_draft==1);
-            add(out,cap,&n,ready?CAP_OFF:0,424,240,224,72,"Выключить",u->live_draft==0);
+            add(out,cap,&n,ready?CAP_ON:0,152,240,224,72,c->on_label[0]?c->on_label:"Включить",u->live_draft==1);
+            add(out,cap,&n,ready?CAP_OFF:0,424,240,224,72,c->off_label[0]?c->off_label:"Выключить",u->live_draft==0);
         }
     }else if(c->kind==HOME_CONTROL_RGB||c->kind==HOME_CONTROL_HSV){
         for(unsigned i=0;i<3;++i){int y=136+80*(int)i;
@@ -537,13 +565,16 @@ static unsigned live_controls(const home_ui_t *u,home_ui_control_t *out,unsigned
         if(tiles[i].kind==HOME_TILE_DEVICE){
             const home_live_device_t *d=&l->devices[slot];bool ready=can&&d->available;
             /* Opening detail remains useful offline. It never submits a command. */
-            if(d->has_toggle){
+            if(d->has_toggle&&d->profile!=HOME_PROFILE_LOCK&&strcmp(d->type,"devices.types.openable.valve")){
                 bool failed=l->command_failed&&l->failed_device==slot;
                 bool enabled=failed?(l->online&&l->time_ready&&!l->pending):ready;
-                const char *label=l->pending?"Ожидание":failed&&enabled?"Проверить":!d->available?"Недоступно":!can?"Нет связи":d->on?"Выключить":"Включить";
+                const char *label=l->pending?"Ожидание":failed&&enabled?"Проверить":!d->available?"Недоступно":!can?"Нет связи":d->on?(d->quick_off[0]?d->quick_off:"Выключить"):(d->quick_on[0]?d->quick_on:"Включить");
                 add(out,cap,&n,enabled?(failed?LIVE_REFRESH:LIVE_TOGGLE+slot):0,x+UI_TILE_PAD,y,144,UI_TARGET,label,!failed&&d->on);
-                add(out,cap,&n,LIVE_OPEN+slot,x+UI_TILE_MORE_X,y,56,UI_TARGET,"Ещё",false);
-            }else add(out,cap,&n,LIVE_OPEN+slot,x+UI_TILE_PAD,y,216,UI_TARGET,d->has_range?"Настроить":"Подробнее",false);
+                add(out,cap,&n,LIVE_OPEN+slot,x+UI_TILE_MORE_X,y,56,UI_TARGET,"Настройки",false);
+            }else{
+                add(out,cap,&n,LIVE_OPEN+slot,x+UI_TILE_PAD,y,144,UI_TARGET,d->has_range?"Настроить":"Показать",false);
+                add(out,cap,&n,LIVE_OPEN+slot,x+UI_TILE_MORE_X,y,56,UI_TARGET,"Настройки",false);
+            }
         }else if(tiles[i].kind==HOME_TILE_ROOM){
             add(out,cap,&n,LIVE_ROOM+slot,x+UI_TILE_PAD,y,216,UI_TARGET,"Открыть",false);
         }else add(out,cap,&n,can?LIVE_SCENE+slot:0,x+UI_TILE_PAD,y,216,UI_TARGET,l->pending?"Ожидание":!can?"Нет связи":"Запустить",false);
@@ -558,6 +589,26 @@ unsigned home_ui_target(const home_ui_t *u,int x,int y)
     while(n){
         const home_ui_control_t *c=&controls[--n];
         if(x>=c->x&&y>=c->y&&x<c->x+c->w&&y<c->y+c->h)return c->action;
+    }
+    /* Card bodies and names open details only after all explicit buttons,
+     * including disabled ones, have been considered. No overlapping targets. */
+    if(u&&u->live&&u->page==HOME_PAGE_DEVICE&&home_ui_capabilities(u)){
+        const home_live_device_t *d=&u->live->devices[u->device];
+        for(unsigned i=0;i<6&&u->control_offset+i<d->control_count;++i){
+            int left=home_ui_tile_x(i),top=home_ui_tile_y(i);
+            if(x>=left&&x<left+240&&y>=top&&y<top+128)return CAP_OPEN+d->control_start+u->control_offset+i;
+        }
+    }else if(u&&u->live&&(u->page==HOME_PAGE_HOME||u->page==HOME_PAGE_ROOM)){
+        home_ui_tile_t tiles[6];unsigned total=home_ui_tiles(u,tiles);
+        for(unsigned i=0;i<total;++i){int left=home_ui_tile_x(i),top=home_ui_tile_y(i);
+            if(tiles[i].kind==HOME_TILE_DEVICE&&x>=left&&x<left+240&&y>=top&&y<top+128)return LIVE_OPEN+tiles[i].slot;
+        }
+    }else if(u&&!u->live&&(u->page==HOME_PAGE_HOME||u->page==HOME_PAGE_ROOM)){
+        static const unsigned devices[3][2]={{0,3},{1,4},{2,4}};
+        unsigned count=u->page==HOME_PAGE_HOME?4:u->room<3?(devices[u->room][1]<4?2:1):0;
+        for(unsigned i=0;i<count;++i){int left=home_ui_tile_x(i),top=home_ui_tile_y(i);
+            if(x>=left&&x<left+240&&y>=top&&y<top+128)return OPEN_DEVICE+(u->page==HOME_PAGE_HOME?i:devices[u->room][i]);
+        }
     }
     return 0;
 }

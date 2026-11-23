@@ -1,0 +1,326 @@
+[
+  {
+    "type": "devices.types.light",
+    "primary": "brightness",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.light.ceiling",
+    "primary": "brightness",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.light.dimmable",
+    "primary": "brightness",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.light.garland",
+    "primary": "brightness",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.light.lamp",
+    "primary": "brightness",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.light.sconce",
+    "primary": "brightness",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.light.strip",
+    "primary": "brightness",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.light.torchere",
+    "primary": "brightness",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.thermostat",
+    "primary": "temperature",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.thermostat.ac",
+    "primary": "temperature",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.humidifier",
+    "primary": "humidity",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.purifier",
+    "primary": "fan_speed",
+    "kind": "mode",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.ventilation",
+    "primary": "fan_speed",
+    "kind": "mode",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.ventilation.fan",
+    "primary": "fan_speed",
+    "kind": "mode",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.media_device",
+    "primary": "volume",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.media_device.receiver",
+    "primary": "volume",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.media_device.tv",
+    "primary": "volume",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.media_device.tv_box",
+    "primary": "volume",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.vacuum_cleaner",
+    "primary": "on",
+    "kind": "toggle",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.openable",
+    "primary": "open",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.openable.curtain",
+    "primary": "open",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.openable.valve",
+    "primary": "open",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.openable.door_lock",
+    "primary": "open",
+    "kind": "range",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.socket",
+    "primary": "on",
+    "kind": "toggle",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.switch",
+    "primary": "on",
+    "kind": "toggle",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.switch.relay",
+    "primary": "on",
+    "kind": "toggle",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.cooking",
+    "primary": "temperature",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.cooking.grill.aero",
+    "primary": "temperature",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.cooking.kettle",
+    "primary": "temperature",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.iron",
+    "primary": "temperature",
+    "kind": "range",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.cooking.multicooker",
+    "primary": "program",
+    "kind": "mode",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.cooking.coffee_maker",
+    "primary": "coffee_mode",
+    "kind": "mode",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.dishwasher",
+    "primary": "dishwashing",
+    "kind": "mode",
+    "dashboard": false
+  },
+  {
+    "type": "devices.types.washing_machine",
+    "primary": "program",
+    "kind": "mode",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.pet_feeder",
+    "primary": "on",
+    "kind": "toggle",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.pet_drinking_fountain",
+    "primary": "on",
+    "kind": "toggle",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.camera",
+    "primary": "on",
+    "kind": "toggle",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.sensor",
+    "primary": "temperature",
+    "kind": "reading",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.sensor.button",
+    "primary": "button",
+    "kind": "reading",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.sensor.climate",
+    "primary": "temperature",
+    "kind": "reading",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.sensor.gas",
+    "primary": "gas",
+    "kind": "reading",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.sensor.illumination",
+    "primary": "illumination",
+    "kind": "reading",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.sensor.motion",
+    "primary": "motion",
+    "kind": "reading",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.sensor.open",
+    "primary": "open",
+    "kind": "reading",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.sensor.smoke",
+    "primary": "smoke",
+    "kind": "reading",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.sensor.vibration",
+    "primary": "vibration",
+    "kind": "reading",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.sensor.water_leak",
+    "primary": "water_leak",
+    "kind": "reading",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.smart_meter",
+    "primary": "meter",
+    "kind": "reading",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.smart_meter.cold_water",
+    "primary": "water_meter",
+    "kind": "reading",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.smart_meter.hot_water",
+    "primary": "water_meter",
+    "kind": "reading",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.smart_meter.gas",
+    "primary": "gas_meter",
+    "kind": "reading",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.smart_meter.heat",
+    "primary": "heat_meter",
+    "kind": "reading",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.smart_meter.electricity",
+    "primary": "electricity_meter",
+    "kind": "reading",
+    "dashboard": true
+  },
+  {
+    "type": "devices.types.other",
+    "primary": "brightness",
+    "kind": "range",
+    "dashboard": true
+  }
+]

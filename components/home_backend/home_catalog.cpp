@@ -1,5 +1,6 @@
 #include "home_catalog.hpp"
 #include "YandexAuth.hpp"
+#include "DevicePresentation.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -35,11 +36,22 @@ struct Label {const char *id,*text;};
 const char *label(const std::string &id)
 {
     static const Label names[]={
+        {"wet_cleaning","Влажная уборка"},{"dry_cleaning","Сухая уборка"},{"mixed_cleaning","Смешанная уборка"},
+        {"express","Экспресс"},{"preheat","Подогрев"},{"supply_air","Приток воздуха"},{"extraction_air","Вытяжка"},
+        {"americano","Американо"},{"cappuccino","Капучино"},{"double_espresso","Двойной эспрессо"},{"espresso","Эспрессо"},{"latte","Латте"},
+        {"black_tea","Чёрный чай"},{"flower_tea","Цветочный чай"},{"green_tea","Зелёный чай"},{"herbal_tea","Травяной чай"},
+        {"oolong_tea","Улун"},{"puerh_tea","Пуэр"},{"red_tea","Красный чай"},{"white_tea","Белый чай"},
+        {"glass","Мойка стекла"},{"intensive","Интенсивный"},{"pre_rinse","Ополаскивание"},
+        {"aspic","Холодец"},{"baby_food","Детское питание"},{"baking","Выпечка"},{"bread","Хлеб"},{"boiling","Варка"},
+        {"cereals","Крупы"},{"cheesecake","Чизкейк"},{"deep_fryer","Фритюр"},{"dessert","Десерты"},{"fowl","Птица"},
+        {"frying","Жарка"},{"macaroni","Макароны"},{"milk_porridge","Молочная каша"},{"multicooker","Мультиповар"},
+        {"pasta","Паста"},{"pilaf","Плов"},{"pizza","Пицца"},{"sauce","Соус"},{"slow_cook","Томление"},
+        {"soup","Суп"},{"steam","Пар"},{"stewing","Тушение"},{"vacuum","Вакуум"},{"yogurt","Йогурт"},
         {"on","Питание"},{"brightness","Яркость"},{"temperature","Температура"},{"temperature_k","Температура света"},
         {"rgb","Цвет RGB"},{"hsv","Цвет HSV"},{"scene","Световые эффекты"},{"volume","Громкость"},{"channel","Канал"},
         {"open","Открытие"},{"humidity","Влажность"},{"thermostat","Режим климата"},{"fan_speed","Скорость вентилятора"},
         {"work_speed","Скорость работы"},{"cleanup_mode","Режим уборки"},{"program","Программа"},{"input_source","Источник сигнала"},
-        {"swing","Поворот жалюзи"},{"tea_mode","Вид чая"},{"coffee_mode","Вид кофе"},{"dishwashing","Режим мойки"},
+        {"ventilation_mode","Режим вентиляции"},{"swing","Направление воздуха"},{"tea_mode","Вид чая"},{"coffee_mode","Вид кофе"},{"dishwashing","Режим мойки"},
         {"heat","Нагрев"},{"pause","Пауза"},{"mute","Без звука"},{"backlight","Подсветка"},{"controls_locked","Блокировка кнопок"},
         {"ionization","Ионизация"},{"keep_warm","Поддержание тепла"},{"oscillation","Вращение"},{"auto","Авто"},
         {"cool","Охлаждение"},{"dry","Осушение"},{"fan_only","Вентиляция"},{"eco","Эко"},{"quiet","Тихий"},
@@ -76,16 +88,22 @@ const char *unit(const std::string &id)
     for(const auto &n:names)if(id==n.id)return n.text;
     auto dot=id.rfind('.');return id.empty()?"":dot==std::string::npos?id.c_str():id.c_str()+dot+1;
 }
-void exportControl(home_live_data_t &next,home_live_device_t &device,const DeviceControl &c,unsigned owner,unsigned source)
+void exportControl(home_live_data_t &next,home_live_device_t &device,const Device &original,const DeviceControl &c,unsigned owner,unsigned source)
 {
     if(next.control_count>=HOME_MAX_CONTROLS){next.truncated=device.controls_truncated=true;return;}
     auto &out=next.controls[next.control_count++];++device.control_count;
     out.device=owner;out.source=source;
-    homeText(out.name,sizeof(out.name),label(c.instance.empty()?c.type:c.instance));
+    const char *context=home_presentation::controlName(original,c);
+    homeText(out.name,sizeof(out.name),context?context:label(c.instance.empty()?c.type:c.instance));
+    homeText(out.instance,sizeof(out.instance),c.instance);
+    homeText(out.on_label,sizeof(out.on_label),home_presentation::onLabel(original,c));
+    homeText(out.off_label,sizeof(out.off_label),home_presentation::offLabel(original,c));
+    out.priority=home_presentation::rank(original,c);
     homeText(out.unit,sizeof(out.unit),unit(c.unit));
     out.known=c.known;out.boolean=c.boolean;out.relative_only=c.relative_only;
     out.has_minimum=c.has_minimum;out.has_maximum=c.has_maximum;
     out.momentary=c.type=="devices.capabilities.on_off"&&!c.retrievable&&!c.split;
+    out.quick=c.kind==ControlKind::Toggle&&!out.momentary&&device.profile!=HOME_PROFILE_LOCK&&original.type!="devices.types.openable.valve";
     out.value=c.number;out.second=c.saturation;out.third=c.value;out.minimum=c.minimum;out.maximum=c.maximum;out.step=c.step;
     out.kind=c.kind==ControlKind::Toggle?HOME_CONTROL_TOGGLE:c.kind==ControlKind::Range?HOME_CONTROL_RANGE:
         c.kind==ControlKind::Mode?HOME_CONTROL_MODE:c.kind==ControlKind::Rgb?HOME_CONTROL_RGB:c.kind==ControlKind::Hsv?HOME_CONTROL_HSV:HOME_CONTROL_UNSUPPORTED;
@@ -99,7 +117,7 @@ void exportControl(home_live_data_t &next,home_live_device_t &device,const Devic
     char number[96];
     if(out.kind==HOME_CONTROL_UNSUPPORTED)state="Недоступно на этой панели";
     else if(c.known){
-        if(c.kind==ControlKind::Toggle)state=c.boolean?"Включено":"Выключено";
+        if(c.kind==ControlKind::Toggle)state=home_presentation::booleanState(original,c);
         else if(c.kind==ControlKind::Mode)state=label(c.text);
         else if(c.kind==ControlKind::Rgb){snprintf(number,sizeof(number),"#%06X",(unsigned)c.number);state=number;}
         else if(c.kind==ControlKind::Hsv){snprintf(number,sizeof(number),"H %g / S %g / V %g",c.number,c.saturation,c.value);state=number;}
@@ -145,19 +163,30 @@ bool HomeCatalog::load(cJSON *root)
         const auto room=field(raw,"room"),status=field(raw,"state");
         auto r=std::find(rooms.begin(),rooms.end(),room);if(r!=rooms.end())out.room=static_cast<uint8_t>(r-rooms.begin());
         d.available=status.empty()||status=="online";out.available=d.available;
-        signature.push_back("device:"+d.id+":"+room);
+        signature.push_back("device:"+d.id+":"+room+":"+d.type);
+        const auto presentation=home_presentation::policy(d.type);
+        out.profile=presentation.profile;out.dashboard=presentation.dashboard;out.primary_control=UINT16_MAX;
+        homeText(out.type,sizeof(out.type),d.type);
+        homeText(out.quick_on,sizeof(out.quick_on),out.profile==HOME_PROFILE_VACUUM?"Убирать":out.profile==HOME_PROFILE_KETTLE?"Нагрев":out.profile==HOME_PROFILE_PET_FEEDER?"Кормить":out.profile==HOME_PROFILE_WASHER||out.profile==HOME_PROFILE_DISHWASHER?"Пуск":"Включить");
+        homeText(out.quick_off,sizeof(out.quick_off),out.profile==HOME_PROFILE_VACUUM||out.profile==HOME_PROFILE_KETTLE||out.profile==HOME_PROFILE_PET_FEEDER||out.profile==HOME_PROFILE_WASHER||out.profile==HOME_PROFILE_DISHWASHER?"Стоп":"Выключить");
         homeText(out.name,sizeof(out.name),d.name);
         out.icon=d.type.find("light")!=std::string::npos?HOME_ICON_LIGHT:
                  d.type.find("thermostat")!=std::string::npos||d.type.find("heater")!=std::string::npos?HOME_ICON_HEAT:
                  d.type.find("curtain")!=std::string::npos||d.type.find("openable")!=std::string::npos?HOME_ICON_CURTAIN:HOME_ICON_POWER;
         out.control_start=next.control_count;
-        for(size_t index=0;index<d.controls.size();++index)exportControl(next,out,d.controls[index],i,index);
+        for(size_t index=0;index<d.controls.size();++index)exportControl(next,out,d,d.controls[index],i,index);
         for(const auto &p:d.properties){
             if(next.control_count>=HOME_MAX_CONTROLS){next.truncated=out.controls_truncated=true;break;}
             auto &v=next.controls[next.control_count++];++out.control_count;v.device=i;v.kind=HOME_CONTROL_READING;v.known=p.known;
             homeText(v.name,sizeof(v.name),label(p.instance));homeText(v.unit,sizeof(v.unit),unit(p.unit));
+            if(p.instance=="temperature"&&out.profile==HOME_PROFILE_CLIMATE)homeText(v.name,sizeof(v.name),"Измеренная температура");
+            homeText(v.instance,sizeof(v.instance),p.instance);v.priority=home_presentation::readingRank(d,p);
             homeText(v.state,sizeof(v.state),p.known?std::string(p.type=="devices.properties.event"&&p.text=="dry"?"Сухо":p.type=="devices.properties.event"&&p.text=="normal"?"Норма":label(p.text))+(v.unit[0]?std::string(" ")+v.unit:""):"Нет данных");
         }
+        std::stable_sort(next.controls+out.control_start,next.controls+out.control_start+out.control_count,
+            [](const home_live_control_t &a,const home_live_control_t &b){return a.priority<b.priority;});
+        for(unsigned n=out.control_start;n<out.control_start+out.control_count;++n)
+            if(next.controls[n].kind!=HOME_CONTROL_UNSUPPORTED){out.primary_control=n;break;}
         std::string label="Состояние неизвестно";
         for(const auto &c:d.controls){
             signature.push_back(d.id+":"+c.type+":"+c.instance+":"+numberSignature(c.minimum)+":"+numberSignature(c.maximum)+":"+numberSignature(c.step)+":"+c.unit);

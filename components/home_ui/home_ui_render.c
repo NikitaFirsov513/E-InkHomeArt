@@ -114,6 +114,15 @@ static void rounded(uint8_t *f,int x,int y,int w,int h,int r,bool fill)
         rect(f,x+r+xx,y+h-1-r-yy,1,1,true);rect(f,x+w-1-r-xx,y+h-1-r-yy,1,1,true);
     }
 }
+/* Integer-pixel settings gear, independent of the text font. */
+static void settings_icon(uint8_t *f,int cx,int cy)
+{
+    for(int y=-11;y<=11;++y)for(int x=-11;x<=11;++x){int r=x*x+y*y;if(r<=121&&r>=25)rect(f,cx+x,cy+y,1,1,true);}
+    rect(f,cx-3,cy-15,6,8,true);rect(f,cx-3,cy+8,6,8,true);
+    rect(f,cx-15,cy-3,8,6,true);rect(f,cx+8,cy-3,8,6,true);
+    rect(f,cx-12,cy-12,6,6,true);rect(f,cx+7,cy-12,6,6,true);
+    rect(f,cx-12,cy+7,6,6,true);rect(f,cx+7,cy+7,6,6,true);
+}
 static bool centered(uint8_t *f,int x,int y,int width,const char *label,const home_font_t *font,bool black)
 {
     int actual=text_width(label,font);
@@ -167,7 +176,8 @@ static bool header(uint8_t *f,const home_ui_t *u,const char *title)
     bool detail=u->page==HOME_PAGE_DEVICE||u->page==HOME_PAGE_CONTROL||u->page==HOME_PAGE_NUMBER||u->page==HOME_PAGE_SETTINGS||u->page==HOME_PAGE_ACCOUNT||u->page==HOME_PAGE_NETWORK;
     bool back=detail||u->page==HOME_PAGE_ROOM;
     bool device_title=u->page==HOME_PAGE_DEVICE||u->page==HOME_PAGE_CONTROL;
-    int width=u->page==HOME_PAGE_DEVICE&&!home_ui_capabilities(u)?448:detail?616:back?304:440;
+    bool all=u->page==HOME_PAGE_CONTROL&&home_ui_capabilities(u)&&u->live->devices[u->device].control_count>1;
+    int width=all||(u->page==HOME_PAGE_DEVICE&&!home_ui_capabilities(u))?448:detail?616:back?304:440;
     bool ok=device_title?detail_title(f,title,width):fit(f,back?160:24,8,title,&home_font_28,true,width);
     rect(f,24,UI_HEADER_LINE,752,1,true);rect(f,0,UI_FOOTER,800,1,true);
     unsigned total=u->live?home_ui_tile_count(u):0;
@@ -264,7 +274,7 @@ static bool capability_body(uint8_t *f,const home_ui_t *u)
         ok&=fit(f,24,362,page,&home_font_18,true,752);
     }else if(c->kind==HOME_CONTROL_TOGGLE){
         ok&=fit(f,24,176,c->state,&home_font_28,true,752);
-        ok&=fit(f,24,350,c->momentary?"Команда пульта · текущее питание неизвестно":"Выберите состояние, затем нажмите Применить",&home_font_18,true,752);
+        ok&=fit(f,24,350,c->momentary?"Команда без обратной связи · состояние неизвестно":"Выберите состояние, затем нажмите Применить",&home_font_18,true,752);
     }else{
         ok&=fit(f,24,184,c->state,&home_font_28,true,752);
         ok&=fit(f,24,296,c->kind==HOME_CONTROL_READING?"Показание датчика · доступно только чтение":"Это умение не поддерживается экраном панели",&home_font_20,true,752);
@@ -283,7 +293,8 @@ static bool draw_controls(uint8_t *f,const home_ui_t *u,const home_live_device_t
         if(!caption)continue;
         bool fill=c->filled&&c->action!=0;
         rounded(f,c->x,c->y,c->w,c->h,8,fill);
-        const home_font_t *font=c->w<=UI_TARGET?&home_font_18:c->action?&home_font_20_bold:&home_font_18;
+        if(c->w==56&&!strcmp(caption,"Настройки")){settings_icon(f,c->x+28,c->y+28);continue;}
+        const home_font_t *font=c->w<=UI_TARGET||c->action==CAP_ALL?&home_font_18:c->action?&home_font_20_bold:&home_font_18;
         ok&=centered(f,c->x+8,c->y+(c->h-font->height)/2,c->w-16,caption,font,!fill);
     }
     return ok;
@@ -344,7 +355,13 @@ static bool live_render(uint8_t *f,size_t length,const home_ui_t *u)
                 ok&=fit(f,x+12,y+32,d->room<l->room_count?l->rooms[d->room].name:"Без комнаты",&home_font_18,true,128);
                 char value[64];const char *state=d->available?d->state:"Нет связи";
                 if(d->available){
-                    if(d->has_toggle&&!d->on)state="Выкл.";
+                    const home_live_control_t *primary=d->control_count&&d->primary_control<l->control_count?&l->controls[d->primary_control]:NULL;
+                    if(d->profile==HOME_PROFILE_VACUUM){
+                        state=d->has_toggle?(d->on?"Уборка":"Стоп"):"Неизв.";
+                        for(unsigned v=d->control_start;v<d->control_start+d->control_count;++v)
+                            if(!strcmp(l->controls[v].instance,"pause")&&l->controls[v].known&&l->controls[v].boolean)state="Пауза";
+                    }else if(primary&&primary->known&&(primary->kind==HOME_CONTROL_RANGE||primary->kind==HOME_CONTROL_READING))state=primary->state;
+                    else if(d->has_toggle&&!d->on)state="Выкл.";
                     else if(d->has_range){value_text(value,sizeof(value),d,d->value);state=value;}
                     else if(d->has_toggle)state="Вкл.";
                 }
