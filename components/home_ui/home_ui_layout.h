@@ -21,7 +21,13 @@ enum { NAV_HOME=1,NAV_ROOMS,NAV_SCENES,ART,SETTINGS,BACK,
        LIVE_OPEN=100,LIVE_TOGGLE=140,LIVE_ROOM=180,LIVE_SCENE=200,
        LIVE_PREV=230,LIVE_NEXT,LIVE_LOGIN,LIVE_CANCEL,LIVE_LOGOUT,LIVE_REFRESH,
        LIVE_THEME,LIVE_ACCOUNT,LIVE_NETWORK,
-       LIVE_ON=240,LIVE_OFF,LIVE_PRESET=242 };
+       LIVE_ON=240,LIVE_OFF,LIVE_PRESET=242,
+       CAP_PREV=300,CAP_NEXT,CAP_ON,CAP_OFF,CAP_PULSE,CAP_EDIT,CAP_OPTIONS_PREV,CAP_OPTIONS_NEXT,
+       CAP_COLOR_MINUS=320,CAP_COLOR_PLUS=330,CAP_COLOR_EDIT=340,
+       CAP_OPEN=1000,CAP_OPTION=2000,NUMBER_KEY=4000 };
+
+static inline bool home_ui_capabilities(const home_ui_t *u)
+{ return u->live&&u->device<u->live->device_count&&u->live->devices[u->device].control_count>0; }
 
 static inline bool home_ui_device_failed(const home_ui_t *u)
 {

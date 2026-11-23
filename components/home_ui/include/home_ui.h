@@ -12,11 +12,15 @@
 
 typedef enum { HOME_PAGE_HOME, HOME_PAGE_ROOMS, HOME_PAGE_ROOM,
                HOME_PAGE_SCENES, HOME_PAGE_DEVICE, HOME_PAGE_SETTINGS,
-               HOME_PAGE_ACCOUNT, HOME_PAGE_NETWORK } home_ui_page_t;
+               HOME_PAGE_ACCOUNT, HOME_PAGE_NETWORK,HOME_PAGE_CONTROL,HOME_PAGE_NUMBER } home_ui_page_t;
 typedef struct {
     const home_live_data_t *live;
     unsigned offset,return_offset;
     double live_draft;
+    double color_draft[3];
+    unsigned control,control_offset,option_offset,draft_option,number_channel;
+    char number_text[24];
+    bool number_error,number_replace;
     home_command_t command;
     bool active, visible, contact, require_release, pressed;
     bool dark_theme;
@@ -64,3 +68,5 @@ typedef struct { home_tile_kind_t kind; unsigned slot; } home_ui_tile_t;
 unsigned home_ui_tile_count(const home_ui_t *ui);
 unsigned home_ui_tiles(const home_ui_t *ui,home_ui_tile_t out[6]);
 double home_ui_preset_value(const home_live_device_t *device,unsigned preset);
+const home_live_control_t *home_ui_selected_control(const home_ui_t *ui);
+double home_ui_control_preset(const home_live_control_t *control,unsigned preset);

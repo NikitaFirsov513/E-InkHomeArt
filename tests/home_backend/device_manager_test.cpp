@@ -67,7 +67,7 @@ int main()
         action.number = 75;
         CHECK(buildDeviceAction(*device, action, body) == ESP_OK);
         action.relative = true;
-        CHECK(buildDeviceAction(*device, action, body) == ESP_ERR_INVALID_ARG);
+        CHECK(buildDeviceAction(*device, action, body) == ESP_OK); // random_access also permits relative commands.
         strcpy(action.instance, "volume"); action.number = -0.5;
         CHECK(buildDeviceAction(*device, action, body) == ESP_OK);
         CHECK(body.find("\"relative\":true") != std::string::npos);

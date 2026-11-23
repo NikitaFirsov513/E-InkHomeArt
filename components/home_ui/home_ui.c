@@ -1,6 +1,8 @@
 #include "home_ui.h"
 #include "home_ui_layout.h"
 #include <string.h>
+#include <math.h>
+#include <stdio.h>
 
 void home_ui_init(home_ui_t *u)
 {
@@ -102,9 +104,131 @@ double home_ui_preset_value(const home_live_device_t *d,unsigned preset)
     if(steps>max_steps)steps=max_steps;
     return d->minimum+steps*d->step;
 }
+const home_live_control_t *home_ui_selected_control(const home_ui_t *u)
+{
+    if(!home_ui_capabilities(u)||u->control>=u->live->control_count)return NULL;
+    const home_live_device_t *d=&u->live->devices[u->device];
+    return u->control>=d->control_start&&u->control<d->control_start+d->control_count&&u->live->controls[u->control].device==u->device?&u->live->controls[u->control]:NULL;
+}
+double home_ui_control_preset(const home_live_control_t *c,unsigned preset)
+{
+    if(!c||preset>3||!c->has_minimum||!c->has_maximum||c->step<=0)return 0;
+    double target=c->minimum+(c->maximum-c->minimum)*(preset+1)*0.25;
+    if(!strcmp(c->unit,"%"))target=c->maximum*(preset+1)*0.25;
+    if(target<c->minimum)target=c->minimum;
+    double steps=floor((target-c->minimum)/c->step+0.5),maximum=floor((c->maximum-c->minimum)/c->step+0.000001);
+    return c->minimum+(steps>maximum?maximum:steps)*c->step;
+}
+static void select_control(home_ui_t *u,unsigned index)
+{
+    u->control=index;const home_live_control_t *c=home_ui_selected_control(u);if(!c)return;
+    u->page=HOME_PAGE_CONTROL;u->option_offset=0;u->draft_option=UINT32_MAX;
+    u->live_draft=c->kind==HOME_CONTROL_TOGGLE?(c->known?c->boolean:-1):c->relative_only?0:c->known?c->value:c->has_minimum?c->minimum:0;
+    if(c->kind==HOME_CONTROL_MODE&&c->known&&c->selected_option<c->option_count){u->draft_option=c->selected_option;u->option_offset=u->draft_option/6*6;}
+    if(c->kind==HOME_CONTROL_RGB){unsigned rgb=(unsigned)c->value;u->color_draft[0]=(rgb>>16)&255;u->color_draft[1]=(rgb>>8)&255;u->color_draft[2]=rgb&255;}
+    else {u->color_draft[0]=c->value;u->color_draft[1]=c->second;u->color_draft[2]=c->third;}
+}
+static void number_open(home_ui_t *u,unsigned channel)
+{
+    u->number_channel=channel;u->number_error=false;u->number_replace=true;
+    snprintf(u->number_text,sizeof(u->number_text),"%.9g",channel<3?u->color_draft[channel]:u->live_draft);
+    u->page=HOME_PAGE_NUMBER;
+}
+static void number_key(home_ui_t *u,unsigned key)
+{
+    static const char *keys[]={"1","2","3","del","4","5","6","-","7","8","9",".","0","00","clear","done"};
+    if(key>=16)return;
+    u->number_error=false;size_t n=strlen(u->number_text);
+    if(u->number_replace&&key!=15){
+        if(key!=3&&key!=7){u->number_text[0]=0;n=0;}
+        u->number_replace=false;
+    }
+    if(key==3){if(n)u->number_text[n-1]=0;}
+    else if(key==7){
+        if(u->number_text[0]=='-')memmove(u->number_text,u->number_text+1,n);
+        else if(n+1<sizeof(u->number_text)){memmove(u->number_text+1,u->number_text,n+1);u->number_text[0]='-';}
+    }else if(key==14)u->number_text[0]=0;
+    else if(key==15){
+        const char *cursor=u->number_text;bool negative=*cursor=='-';if(negative)++cursor;
+        double v=0,fraction=0.1;bool decimal=false,digit=false,syntax=true;
+        for(;*cursor;++cursor){
+            if(*cursor=='.'&&!decimal){decimal=true;continue;}
+            if(*cursor<'0'||*cursor>'9'){syntax=false;break;}
+            digit=true;if(decimal){v+=(*cursor-'0')*fraction;fraction*=0.1;}else v=v*10+(*cursor-'0');
+        }
+        if(negative)v=-v;
+        const home_live_control_t *c=home_ui_selected_control(u);
+        bool valid=c&&syntax&&digit&&isfinite(v);
+        if(valid&&u->number_channel<3){
+            double maximum=c->kind==HOME_CONTROL_RGB?255:u->number_channel==0?360:100;
+            valid=v>=0&&v<=maximum&&floor(v)==v;if(valid)u->color_draft[u->number_channel]=v;
+        }else if(valid){
+            double anchor=c->relative_only?0:c->has_minimum?c->minimum:0;
+            double steps=(v-anchor)/c->step;
+            valid=isfinite(steps)&&fabs(steps-round(steps))<0.00001;
+            if(!c->relative_only)valid=valid&&(!c->has_minimum||v>=c->minimum)&&(!c->has_maximum||v<=c->maximum);
+            else if(c->has_minimum&&c->has_maximum)valid=valid&&fabs(v)<=c->maximum-c->minimum;
+            if(valid)u->live_draft=v;
+        }
+        if(valid)u->page=HOME_PAGE_CONTROL;else u->number_error=true;
+    }else if(key!=11||!strchr(u->number_text,'.')){
+        size_t add=strlen(keys[key]);if(n+add<sizeof(u->number_text))memcpy(u->number_text+n,keys[key],add+1);
+    }
+}
+static bool capability_action(home_ui_t *u,unsigned a)
+{
+    const home_live_data_t *l=u->live;
+    if(u->page==HOME_PAGE_NUMBER){
+        if(a==BACK)u->page=HOME_PAGE_CONTROL;
+        else if(a>=NUMBER_KEY&&a<NUMBER_KEY+16)number_key(u,a-NUMBER_KEY);else return false;
+        changed(u);return true;
+    }
+    if(u->page==HOME_PAGE_CONTROL&&a==BACK){u->page=HOME_PAGE_DEVICE;changed(u);return true;}
+    if(u->page==HOME_PAGE_DEVICE&&home_ui_capabilities(u)){
+        const home_live_device_t *d=&l->devices[u->device];
+        if(a==CAP_PREV)u->control_offset=u->control_offset>=6?u->control_offset-6:0;
+        else if(a==CAP_NEXT){if(u->control_offset+6<d->control_count)u->control_offset+=6;}
+        else if(a>=CAP_OPEN&&a<CAP_OPEN+HOME_MAX_CONTROLS){select_control(u,a-CAP_OPEN);}
+        else return false;
+        changed(u);return true;
+    }
+    if(u->page!=HOME_PAGE_CONTROL)return false;
+    const home_live_control_t *c=home_ui_selected_control(u);if(!c)return true;
+    if(a==CAP_OPTIONS_PREV)u->option_offset=u->option_offset>=6?u->option_offset-6:0;
+    else if(a==CAP_OPTIONS_NEXT){if(u->option_offset+6<c->option_count)u->option_offset+=6;}
+    else if(a==LIVE_REFRESH)return false;
+    else{
+        if(!l->online||!l->time_ready||!l->loaded||l->pending||!l->devices[u->device].available||home_ui_device_failed(u))return true;
+        if(a==CAP_EDIT)number_open(u,3);
+        else if(a>=CAP_COLOR_EDIT&&a<CAP_COLOR_EDIT+3)number_open(u,a-CAP_COLOR_EDIT);
+        else if(a>=CAP_COLOR_MINUS&&a<CAP_COLOR_MINUS+3){unsigned ch=a-CAP_COLOR_MINUS;if(u->color_draft[ch]>0)--u->color_draft[ch];}
+        else if(a>=CAP_COLOR_PLUS&&a<CAP_COLOR_PLUS+3){unsigned ch=a-CAP_COLOR_PLUS;double max=c->kind==HOME_CONTROL_RGB?255:ch==0?360:100;if(u->color_draft[ch]<max)++u->color_draft[ch];}
+        else if(a==MINUS||a==PLUS){
+            double v=u->live_draft+(a==PLUS?c->step:-c->step);
+            if(!c->relative_only){if(c->has_minimum&&v<c->minimum)v=c->minimum;if(c->has_maximum&&v>c->maximum)v=c->minimum+floor((c->maximum-c->minimum)/c->step+0.00001)*c->step;}
+            else if(c->has_minimum&&c->has_maximum&&fabs(v)>c->maximum-c->minimum)v=u->live_draft;
+            if(isfinite(v))u->live_draft=v;
+        }else if(a>=LIVE_PRESET&&a<LIVE_PRESET+4)u->live_draft=home_ui_control_preset(c,a-LIVE_PRESET);
+        else if(a==CAP_ON||a==CAP_OFF)u->live_draft=a==CAP_ON;
+        else if(a>=CAP_OPTION&&a<CAP_OPTION+HOME_MAX_OPTIONS){unsigned option=a-CAP_OPTION;if(option<c->option_count)u->draft_option=option;}
+        else if(a==APPLY||a==CAP_PULSE){
+            home_command_t cmd={.kind=HOME_CMD_CONTROL,.epoch=l->epoch,.slot=u->device,.control=u->control,.option=u->draft_option,.value=u->live_draft,.relative=c->relative_only};
+            if(c->kind==HOME_CONTROL_READING||c->kind==HOME_CONTROL_UNSUPPORTED)return true;
+            if(c->kind==HOME_CONTROL_MODE&&u->draft_option>=c->option_count)return true;
+            if(c->kind==HOME_CONTROL_TOGGLE&&!c->momentary&&u->live_draft!=0&&u->live_draft!=1)return true;
+            if(c->kind==HOME_CONTROL_RANGE&&c->relative_only&&u->live_draft==0)return true;
+            if(c->kind==HOME_CONTROL_RGB)cmd.value=(unsigned)u->color_draft[0]*65536+(unsigned)u->color_draft[1]*256+(unsigned)u->color_draft[2];
+            else if(c->kind==HOME_CONTROL_HSV){cmd.value=u->color_draft[0];cmd.second=u->color_draft[1];cmd.third=u->color_draft[2];}
+            if(a==CAP_PULSE)cmd.value=1;
+            u->command=cmd;
+        }else return false;
+    }
+    changed(u);return true;
+}
 static void live_action(home_ui_t *u,unsigned a)
 {
     const home_live_data_t *l=u->live;
+    if(capability_action(u,a))return;
     home_command_t c={.epoch=l->epoch};
     if(a==NAV_HOME||a==NAV_ROOMS||a==NAV_SCENES||a==SETTINGS){
         u->page=a==NAV_HOME?HOME_PAGE_HOME:a==NAV_ROOMS?HOME_PAGE_ROOMS:a==NAV_SCENES?HOME_PAGE_SCENES:HOME_PAGE_SETTINGS;u->offset=0;
@@ -119,7 +243,7 @@ static void live_action(home_ui_t *u,unsigned a)
     else if(a==LIVE_NEXT&&u->offset+HOME_UI_PAGE_SIZE<home_ui_tile_count(u))u->offset+=HOME_UI_PAGE_SIZE;
     else if(a>=LIVE_OPEN&&a<LIVE_OPEN+HOME_MAX_DEVICES){
         unsigned d=a-LIVE_OPEN;if(d>=l->device_count)return;
-        u->return_page=u->page;u->return_offset=u->offset;u->page=HOME_PAGE_DEVICE;u->device=d;u->live_draft=l->devices[d].value;
+        u->return_page=u->page;u->return_offset=u->offset;u->page=HOME_PAGE_DEVICE;u->device=d;u->live_draft=l->devices[d].value;u->control_offset=0;
     }else if(a>=LIVE_ROOM&&a<LIVE_ROOM+HOME_MAX_ROOMS){u->room=a-LIVE_ROOM;u->page=HOME_PAGE_ROOM;u->offset=0;}
     else if(a==LIVE_ACCOUNT)u->page=HOME_PAGE_ACCOUNT;
     else if(a==LIVE_NETWORK)u->page=HOME_PAGE_NETWORK;
@@ -245,7 +369,7 @@ static void add(home_ui_control_t *out,unsigned capacity,unsigned *n,unsigned id
  * Containers, names and state labels are deliberately not clickable. */
 static void chrome(const home_ui_t *u,home_ui_control_t *out,unsigned cap,unsigned *n)
 {
-    bool device=u->page==HOME_PAGE_DEVICE;
+    bool device=u->page==HOME_PAGE_DEVICE||u->page==HOME_PAGE_CONTROL||u->page==HOME_PAGE_NUMBER;
     bool account=u->page==HOME_PAGE_ACCOUNT;
     bool detail=device||account||u->page==HOME_PAGE_SETTINGS||u->page==HOME_PAGE_NETWORK;
     bool back=detail||u->page==HOME_PAGE_ROOM;
@@ -312,10 +436,73 @@ unsigned home_ui_controls(const home_ui_t *u,home_ui_control_t *out,unsigned cap
     return n;
 }
 
+static unsigned capability_controls(const home_ui_t *u,home_ui_control_t *out,unsigned cap,unsigned n)
+{
+    const home_live_data_t *l=u->live;
+    if(u->page==HOME_PAGE_NUMBER){
+        static const char *keys[]={"1","2","3","Удалить","4","5","6","-","7","8","9",".","0","00","Очистить","Готово"};
+        for(unsigned i=0;i<16;++i)add(out,cap,&n,NUMBER_KEY+i,24+192*(int)(i%4),144+64*(int)(i/4),176,56,keys[i],i==15);
+        return n;
+    }
+    if(u->page==HOME_PAGE_DEVICE){
+        const home_live_device_t *d=&l->devices[u->device];
+        unsigned end=u->control_offset+6;if(end>d->control_count)end=d->control_count;
+        for(unsigned i=u->control_offset;i<end;++i){
+            unsigned index=d->control_start+i;const home_live_control_t *c=&l->controls[index];unsigned tile=i-u->control_offset;
+            add(out,cap,&n,CAP_OPEN+index,home_ui_tile_x(tile)+12,home_ui_tile_y(tile)+64,216,56,
+                c->kind==HOME_CONTROL_READING||c->kind==HOME_CONTROL_UNSUPPORTED?"Подробнее":"Настроить",false);
+        }
+        add(out,cap,&n,u->control_offset?CAP_PREV:0,24,UI_NAV_Y,112,56,"<",false);
+        add(out,cap,&n,u->control_offset+6<d->control_count?CAP_NEXT:0,152,UI_NAV_Y,112,56,">",false);
+        add(out,cap,&n,l->online&&l->time_ready&&!l->pending?LIVE_REFRESH:0,288,UI_NAV_Y,488,56,"Обновить состояние",false);
+        return n;
+    }
+    const home_live_control_t *c=home_ui_selected_control(u);if(!c)return n;
+    bool read=c->kind==HOME_CONTROL_READING||c->kind==HOME_CONTROL_UNSUPPORTED;
+    bool failed=home_ui_device_failed(u);
+    bool ready=l->online&&l->time_ready&&l->loaded&&!l->pending&&l->devices[u->device].available&&!failed;
+    if(c->kind==HOME_CONTROL_RANGE){
+        add(out,cap,&n,ready?MINUS:0,168,168,96,72,"-",false);
+        add(out,cap,&n,ready?PLUS:0,536,168,96,72,"+",false);
+        add(out,cap,&n,ready?CAP_EDIT:0,280,165,240,72,NULL,false);
+        if(!c->relative_only&&c->has_minimum&&c->has_maximum)for(unsigned i=0;i<4;++i){
+            unsigned before=n;add(out,cap,&n,ready?LIVE_PRESET+i:0,88+160*(int)i,304,144,56,NULL,u->live_draft==home_ui_control_preset(c,i));
+            if(n>before)out[n-1].preset=i+1;
+        }
+    }else if(c->kind==HOME_CONTROL_MODE){
+        unsigned end=u->option_offset+6;if(end>c->option_count)end=c->option_count;
+        for(unsigned i=u->option_offset;i<end;++i){unsigned tile=i-u->option_offset;
+            add(out,cap,&n,ready?CAP_OPTION+i:0,24+256*(int)(tile%3),208+80*(int)(tile/3),240,56,l->options[c->option_start+i].name,u->draft_option==i);
+        }
+        add(out,cap,&n,u->option_offset?CAP_OPTIONS_PREV:0,24,UI_NAV_Y,112,56,"<",false);
+        add(out,cap,&n,u->option_offset+6<c->option_count?CAP_OPTIONS_NEXT:0,152,UI_NAV_Y,112,56,">",false);
+    }else if(c->kind==HOME_CONTROL_TOGGLE){
+        if(c->momentary)add(out,cap,&n,ready?CAP_PULSE:0,216,240,368,72,"Нажать питание",false);
+        else{
+            add(out,cap,&n,ready?CAP_ON:0,152,240,224,72,"Включить",u->live_draft==1);
+            add(out,cap,&n,ready?CAP_OFF:0,424,240,224,72,"Выключить",u->live_draft==0);
+        }
+    }else if(c->kind==HOME_CONTROL_RGB||c->kind==HOME_CONTROL_HSV){
+        for(unsigned i=0;i<3;++i){int y=136+80*(int)i;
+            add(out,cap,&n,ready?CAP_COLOR_MINUS+i:0,344,y,56,56,"-",false);
+            add(out,cap,&n,ready?CAP_COLOR_EDIT+i:0,416,y,208,56,NULL,false);
+            add(out,cap,&n,ready?CAP_COLOR_PLUS+i:0,640,y,56,56,"+",false);
+        }
+    }
+    bool refresh=read||c->momentary||failed;
+    bool enabled=refresh?(l->online&&l->time_ready&&!l->pending):ready;
+    if(c->kind==HOME_CONTROL_MODE&&u->draft_option>=c->option_count&&!refresh)enabled=false;
+    if(c->kind==HOME_CONTROL_TOGGLE&&!c->momentary&&u->live_draft!=0&&u->live_draft!=1&&!refresh)enabled=false;
+    if(c->kind==HOME_CONTROL_RANGE&&c->relative_only&&u->live_draft==0&&!refresh)enabled=false;
+    add(out,cap,&n,enabled?(refresh?LIVE_REFRESH:APPLY):0,c->kind==HOME_CONTROL_MODE?288:24,UI_NAV_Y,c->kind==HOME_CONTROL_MODE?488:752,56,
+        l->pending?"Ожидаем подтверждение":!l->online?"Нет сети":refresh?"Проверить состояние":c->relative_only?"Изменить на указанное":"Применить",enabled);
+    return n;
+}
 static unsigned live_controls(const home_ui_t *u,home_ui_control_t *out,unsigned cap)
 {
     const home_live_data_t *l=u->live;unsigned n=0;chrome(u,out,cap,&n);
     bool can=l->online&&l->time_ready&&!l->pending&&l->loaded;
+    if(u->page==HOME_PAGE_CONTROL||u->page==HOME_PAGE_NUMBER||(u->page==HOME_PAGE_DEVICE&&home_ui_capabilities(u)))return capability_controls(u,out,cap,n);
     if(u->page==HOME_PAGE_SETTINGS){
         const unsigned actions[]={LIVE_NETWORK,LIVE_ACCOUNT,LIVE_THEME,ART};
         const char *labels[]={"Открыть","Аккаунт","Изменить","Показать"};

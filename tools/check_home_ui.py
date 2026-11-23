@@ -12,6 +12,7 @@ sources=['tests/host/home_ui_test.c','components/home_ui/home_ui.c',
          'components/home_ui/home_ui_render.c','components/home_ui/home_ui_font.c','components/home_ui/vendor/qrcodegen/qrcodegen.c']
 cmd=[str(find_clang()),'-std=c11','-DHOME_UI_LAYOUT_CHECK','-O2','-Wall','-Wextra','-Werror',
      '-I'+str(root/'components/home_ui/include'),*[str(root/p) for p in sources]]
+if os.name!='nt':cmd+=['-lm']
 exe=out/('home-ui-test.exe' if os.name=='nt' else 'home-ui-test')
 subprocess.run([*cmd,'-o',str(exe)],check=True)
 subprocess.run([str(exe)],check=True)

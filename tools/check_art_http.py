@@ -13,7 +13,7 @@ includes = ['tests/host/stubs', 'main', 'components/art_manager/include',
 sources = ['tests/host/art_http_test.c', 'main/art_http.c', 'components/art_frame/art_frame.c']
 binary = build / ('art-http-test.exe' if os.name == 'nt' else 'art-http-test')
 subprocess.run([str(find_clang()), '-std=gnu11', '-O2', '-Wall', '-Wextra', '-Werror',
-                *['-I'+str(root/p) for p in includes], *[str(root/p) for p in sources],
+                *['-I'+str(root/p) for p in includes], *[str(root/p) for p in sources], *([] if os.name=='nt' else ['-lm']),
                 '-o', str(binary)], check=True)
 subprocess.run([str(binary)], check=True)
 
@@ -22,7 +22,7 @@ manager_sources = ['tests/host/art_manager_test.c', 'components/art_manager/art_
                    'components/art_store/art_store.c', 'components/art_frame/art_frame.c',
                    'components/home_ui/home_ui.c','components/home_ui/home_ui_render.c','components/home_ui/home_ui_font.c','components/home_ui/vendor/qrcodegen/qrcodegen.c']
 subprocess.run([str(find_clang()), '-std=gnu11', '-O2', '-Wall', '-Wextra', '-Werror',
-                *['-I'+str(root/p) for p in includes], *[str(root/p) for p in manager_sources],
+                *['-I'+str(root/p) for p in includes], *[str(root/p) for p in manager_sources], *([] if os.name=='nt' else ['-lm']),
                 '-o', str(manager)], check=True)
 subprocess.run([str(manager)], check=True)
 subprocess.run([str(manager), 'restore'], check=True)

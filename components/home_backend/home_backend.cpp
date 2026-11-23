@@ -64,7 +64,7 @@ static void worker(void *)
         if(got){
             if(cmd.kind!=HOME_CMD_REFRESH)command_failed=false;
             message.clear();update();
-            bool is_action=cmd.kind==HOME_CMD_TOGGLE||cmd.kind==HOME_CMD_RANGE||cmd.kind==HOME_CMD_SCENE;
+            bool is_action=cmd.kind==HOME_CMD_TOGGLE||cmd.kind==HOME_CMD_RANGE||cmd.kind==HOME_CMD_SCENE||cmd.kind==HOME_CMD_CONTROL;
             if(is_action){command_failed=true;failed_device=cmd.kind==HOME_CMD_SCENE?HOME_MAX_DEVICES:cmd.slot;}
             if(cmd.kind==HOME_CMD_CANCEL)auth.cancel();
             else if(cmd.kind==HOME_CMD_LOGOUT){if(auth.logout()){catalog->clear();next_poll=0;}else message="Не удалось сохранить выход";}
@@ -72,7 +72,7 @@ static void worker(void *)
             else if(!net.time_ready)message="Ожидаем время SNTP. Повторите вход позже";
             else if(cmd.kind==HOME_CMD_LOGIN)auth.begin(seconds());
             else if(cmd.kind==HOME_CMD_REFRESH)next_poll=0;
-            else if(cmd.kind==HOME_CMD_TOGGLE||cmd.kind==HOME_CMD_RANGE||cmd.kind==HOME_CMD_SCENE){
+            else if(cmd.kind==HOME_CMD_TOGGLE||cmd.kind==HOME_CMD_RANGE||cmd.kind==HOME_CMD_SCENE||cmd.kind==HOME_CMD_CONTROL){
                 std::string path,body;DeviceAction action;
                 if(!auth.ensureToken(seconds()))message="Сначала войдите в Яндекс";
                 else if(!catalog->command(cmd,path,body,action))message="Список изменился. Откройте устройство заново";

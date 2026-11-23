@@ -1,0 +1,322 @@
+{
+  "status": "ok",
+  "rooms": [
+    {
+      "id": "r",
+      "name": "Гостиная"
+    }
+  ],
+  "scenarios": [],
+  "devices": [
+    {
+      "id": "rich",
+      "name": "Устройство со всеми настройками",
+      "type": "devices.types.light",
+      "room": "r",
+      "state": "online",
+      "capabilities": [
+        {
+          "type": "devices.capabilities.on_off",
+          "parameters": {},
+          "state": {
+            "instance": "on",
+            "value": true
+          }
+        },
+        {
+          "type": "devices.capabilities.range",
+          "parameters": {
+            "unit": "unit.percent",
+            "range": {
+              "min": 1,
+              "max": 100,
+              "precision": 1
+            },
+            "instance": "brightness"
+          },
+          "state": {
+            "instance": "brightness",
+            "value": 65
+          }
+        },
+        {
+          "type": "devices.capabilities.range",
+          "parameters": {
+            "range": {
+              "min": 0,
+              "max": 100,
+              "precision": 0.5
+            },
+            "instance": "volume"
+          },
+          "state": {
+            "instance": "volume",
+            "value": 40
+          }
+        },
+        {
+          "type": "devices.capabilities.color_setting",
+          "parameters": {
+            "color_model": "hsv",
+            "temperature_k": {
+              "min": 2700,
+              "max": 6500
+            },
+            "color_scene": {
+              "scenes": [
+                {
+                  "id": "reading"
+                },
+                {
+                  "id": "party"
+                },
+                {
+                  "id": "alarm"
+                },
+                {
+                  "id": "fantasy"
+                },
+                {
+                  "id": "romance"
+                },
+                {
+                  "id": "sunrise"
+                },
+                {
+                  "id": "sunset"
+                },
+                {
+                  "id": "night"
+                }
+              ]
+            },
+            "instance": "hsv"
+          },
+          "state": {
+            "instance": "hsv",
+            "value": {
+              "h": 210,
+              "s": 35,
+              "v": 70
+            }
+          }
+        },
+        {
+          "type": "devices.capabilities.mode",
+          "parameters": {
+            "modes": [
+              {
+                "value": "auto"
+              },
+              {
+                "value": "cool"
+              },
+              {
+                "value": "heat"
+              },
+              {
+                "value": "dry"
+              },
+              {
+                "value": "fan_only"
+              },
+              {
+                "value": "eco"
+              },
+              {
+                "value": "quiet"
+              },
+              {
+                "value": "turbo"
+              }
+            ],
+            "instance": "thermostat"
+          },
+          "state": {
+            "instance": "thermostat",
+            "value": "cool"
+          }
+        },
+        {
+          "type": "devices.capabilities.toggle",
+          "parameters": {
+            "instance": "mute"
+          },
+          "state": {
+            "instance": "mute",
+            "value": false
+          }
+        },
+        {
+          "type": "devices.capabilities.range",
+          "parameters": {
+            "unit": "unit.percent",
+            "range": {
+              "min": 30,
+              "max": 80,
+              "precision": 5
+            },
+            "instance": "humidity"
+          },
+          "state": null
+        },
+        {
+          "type": "devices.capabilities.range",
+          "parameters": {
+            "random_access": false,
+            "instance": "channel"
+          },
+          "retrievable": false,
+          "state": null
+        }
+      ],
+      "properties": [
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "battery_level",
+            "unit": "unit.percent"
+          },
+          "state": {
+            "instance": "battery_level",
+            "value": 80
+          }
+        },
+        {
+          "type": "devices.properties.event",
+          "parameters": {
+            "instance": "open"
+          },
+          "state": null
+        },
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "power",
+            "unit": "unit.watt"
+          },
+          "state": {
+            "instance": "power",
+            "value": 12
+          }
+        }
+      ]
+    },
+    {
+      "id": "rgb",
+      "name": "Цветная лампа RGB",
+      "type": "devices.types.light",
+      "room": "r",
+      "state": "online",
+      "capabilities": [
+        {
+          "type": "devices.capabilities.color_setting",
+          "parameters": {
+            "color_model": "rgb",
+            "instance": "rgb"
+          },
+          "state": {
+            "instance": "rgb",
+            "value": 1193046
+          }
+        }
+      ],
+      "properties": []
+    },
+    {
+      "id": "ir",
+      "name": "Телевизор через ИК",
+      "type": "devices.types.light",
+      "room": "r",
+      "state": "online",
+      "capabilities": [
+        {
+          "type": "devices.capabilities.on_off",
+          "parameters": {
+            "split": false
+          },
+          "retrievable": false,
+          "state": null
+        }
+      ],
+      "properties": []
+    },
+    {
+      "id": "split",
+      "name": "ИК с раздельным питанием",
+      "type": "devices.types.light",
+      "room": "r",
+      "state": "online",
+      "capabilities": [
+        {
+          "type": "devices.capabilities.on_off",
+          "parameters": {
+            "split": true
+          },
+          "retrievable": false,
+          "state": null
+        }
+      ],
+      "properties": []
+    },
+    {
+      "id": "sensor",
+      "name": "Датчик",
+      "type": "devices.types.light",
+      "room": "r",
+      "state": "online",
+      "capabilities": [],
+      "properties": [
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "battery_level",
+            "unit": "unit.percent"
+          },
+          "state": {
+            "instance": "battery_level",
+            "value": 80
+          }
+        },
+        {
+          "type": "devices.properties.event",
+          "parameters": {
+            "instance": "open"
+          },
+          "state": null
+        },
+        {
+          "type": "devices.properties.float",
+          "parameters": {
+            "instance": "power",
+            "unit": "unit.watt"
+          },
+          "state": {
+            "instance": "power",
+            "value": 12
+          }
+        }
+      ]
+    },
+    {
+      "id": "camera",
+      "name": "Камера",
+      "type": "devices.types.light",
+      "room": "r",
+      "state": "online",
+      "capabilities": [
+        {
+          "type": "devices.capabilities.video_stream",
+          "parameters": {
+            "protocols": [
+              "hls"
+            ],
+            "instance": "get_stream"
+          },
+          "state": null
+        }
+      ],
+      "properties": []
+    }
+  ]
+}

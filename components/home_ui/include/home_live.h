@@ -4,6 +4,20 @@
 #define HOME_MAX_DEVICES 32
 #define HOME_MAX_ROOMS 16
 #define HOME_MAX_SCENES 16
+#define HOME_MAX_CONTROLS 384
+#define HOME_MAX_OPTIONS 1024
+
+typedef enum { HOME_CONTROL_TOGGLE,HOME_CONTROL_RANGE,HOME_CONTROL_MODE,
+               HOME_CONTROL_RGB,HOME_CONTROL_HSV,HOME_CONTROL_READING,
+               HOME_CONTROL_UNSUPPORTED } home_control_kind_t;
+typedef struct {
+    char name[64],state[80],unit[16];
+    home_control_kind_t kind;
+    uint16_t device,source,option_start,option_count,selected_option;
+    bool known,boolean,relative_only,has_minimum,has_maximum,momentary;
+    double value,second,third,minimum,maximum,step;
+} home_live_control_t;
+typedef struct { char name[64]; } home_live_option_t;
 typedef enum { HOME_ICON_POWER,HOME_ICON_LIGHT,HOME_ICON_HEAT,HOME_ICON_CURTAIN } home_device_icon_t;
 typedef struct {
     char name[80],state[80],range_name[40],unit[12];
@@ -11,6 +25,8 @@ typedef struct {
     uint8_t room;
     bool available,has_toggle,on,has_range;
     double value,minimum,maximum,step;
+    uint16_t control_start,control_count;
+    bool controls_truncated;
 } home_live_device_t;
 typedef struct { char name[80]; } home_live_name_t;
 typedef struct {
@@ -23,7 +39,13 @@ typedef struct {
     uint8_t device_count,room_count,scene_count;
     home_live_device_t devices[HOME_MAX_DEVICES];
     home_live_name_t rooms[HOME_MAX_ROOMS],scenes[HOME_MAX_SCENES];
+    uint16_t control_count,option_count;
+    home_live_control_t controls[HOME_MAX_CONTROLS];
+    home_live_option_t options[HOME_MAX_OPTIONS];
 } home_live_data_t;
 typedef enum { HOME_CMD_NONE,HOME_CMD_LOGIN,HOME_CMD_CANCEL,HOME_CMD_LOGOUT,
-               HOME_CMD_REFRESH,HOME_CMD_TOGGLE,HOME_CMD_RANGE,HOME_CMD_SCENE } home_command_kind_t;
-typedef struct { home_command_kind_t kind; uint32_t epoch; unsigned slot; double value; } home_command_t;
+               HOME_CMD_REFRESH,HOME_CMD_TOGGLE,HOME_CMD_RANGE,HOME_CMD_SCENE,HOME_CMD_CONTROL } home_command_kind_t;
+typedef struct {
+    home_command_kind_t kind; uint32_t epoch; unsigned slot; double value;
+    unsigned control,option; double second,third; bool relative;
+} home_command_t;

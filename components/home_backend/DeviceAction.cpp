@@ -40,16 +40,21 @@ esp_err_t buildDeviceAction(const Device &device, const DeviceAction &action, st
         value = cJSON_CreateString(action.text);
     } else if ((c.kind == ControlKind::Range || c.kind == ControlKind::Rgb) &&
                action.kind == ActionValue::Number && std::isfinite(action.number)) {
-        if (action.relative != c.relative_only) return ESP_ERR_INVALID_ARG;
-        if (!action.relative && (action.number < c.minimum || action.number > c.maximum))
-            return ESP_ERR_INVALID_ARG;
-        if (action.relative && (action.number == 0 || std::abs(action.number) > c.maximum - c.minimum))
-            return ESP_ERR_INVALID_ARG;
+        if(c.kind==ControlKind::Rgb){
+            if(action.relative||action.number<0||action.number>16777215||std::floor(action.number)!=action.number)return ESP_ERR_INVALID_ARG;
+        }else{
+            if(c.relative_only&&!action.relative)return ESP_ERR_INVALID_ARG;
+            if(!action.relative&&((c.has_minimum&&action.number<c.minimum)||(c.has_maximum&&action.number>c.maximum)))return ESP_ERR_INVALID_ARG;
+            if(action.relative&&(action.number==0||(c.has_minimum&&c.has_maximum&&std::abs(action.number)>c.maximum-c.minimum)))return ESP_ERR_INVALID_ARG;
+            double steps=(action.number-(!action.relative&&c.has_minimum?c.minimum:0))/c.step;
+            if(!std::isfinite(steps)||std::abs(steps-std::round(steps))>0.00001)return ESP_ERR_INVALID_ARG;
+        }
         value = cJSON_CreateNumber(action.number);
     } else if (c.kind == ControlKind::Hsv && action.kind == ActionValue::Hsv &&
                !action.relative && std::isfinite(action.number) && action.number >= 0 && action.number <= 360 &&
                std::isfinite(action.saturation) && action.saturation>=0 && action.saturation<=100 &&
                std::isfinite(action.value) && action.value>=0 && action.value<=100) {
+        if(std::floor(action.number)!=action.number||std::floor(action.saturation)!=action.saturation||std::floor(action.value)!=action.value)return ESP_ERR_INVALID_ARG;
         value = cJSON_CreateObject();
         if (value && (!cJSON_AddNumberToObject(value, "h", action.number) ||
                       !cJSON_AddNumberToObject(value, "s", action.saturation) ||
